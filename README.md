@@ -1,6 +1,6 @@
 # Anthology
 
-A self-hosted catalogue that pulls the libraries of your media servers into one searchable collection. Each title links back to the server that has it, so playback still happens there.
+A catalogue that pulls the libraries of your media servers into one searchable collection. Each title links back to the server that has it, so playback still happens there.
 
 ![Library view](docs/screenshots/library.png)
 
@@ -12,7 +12,7 @@ A self-hosted catalogue that pulls the libraries of your media servers into one 
 - Matching across sources by external ID (TMDB, IMDb, TVDB), then by normalized title and year
 - Library browse with search, kind filter and source filter
 - Title pages listing every source that has the title, with a link to open it there
-- Poster cache on disk with a size cap, falling back to the source when a poster is not cached
+- Posters fetched through the server so source credentials never reach the browser
 - Single admin password, set at first run or with `ADMIN_PASSWORD`
 - Source credentials encrypted at rest with `SECRET_KEY`
 - Digital collections: paste a list of titles you own on a store such as Apple TV, and they join the library like any other source
@@ -29,32 +29,45 @@ npm run dev
 
 Open the app, create the admin password, then add a **Sample data** source in Settings (pick Alpha for one and Beta for another to see matching) and press **Sync now**.
 
-Data is stored in `./data` by default. Copy `.env.example` to `.env` to change settings.
+Locally the database is a SQLite file in `./data`. Copy `.env.example` to `.env` to change settings.
 
-## Deploy with Docker
+## Deploy to Vercel
 
-```sh
-cp compose.example.yaml compose.yaml   # then edit the environment values
-docker compose up -d --build
-```
+Anthology runs on Vercel with a [Turso](https://turso.tech) database (hosted libSQL, compatible with SQLite).
 
-| Variable                | Default                  | Purpose                                                                     |
-| ----------------------- | ------------------------ | --------------------------------------------------------------------------- |
-| `ORIGIN`                | none                     | Public URL. Required behind a reverse proxy so form posts are accepted      |
-| `ADMIN_PASSWORD`        | none                     | Admin password. If unset, the first visit asks you to create one            |
-| `SECRET_KEY`            | generated in `DATA_DIR`  | Encrypts source credentials. Changing it makes saved credentials unreadable |
-| `DATA_DIR`              | `./data` (`/data` image) | SQLite database, poster cache and generated key                             |
-| `POSTER_CACHE_MAX_MB`   | `500`                    | Poster cache size cap                                                       |
-| `SYNC_INTERVAL_MINUTES` | `360`                    | How often enabled sources sync automatically                                |
-| `TMDB_READ_TOKEN`       | none                     | TMDB read access token. Turns on streaming availability lookups             |
-| `STREAMING_REGION`      | `US`                     | Country used for streaming availability                                     |
-| `ENABLE_MOCK_SOURCES`   | `false` in production    | Allow the sample-data source type                                           |
+1. Create a database and an access token with the Turso CLI:
 
-Back up the data volume. It holds the database and the generated secret key if you did not set one.
+   ```sh
+   turso db create anthology
+   turso db show anthology --url
+   turso db tokens create anthology
+   ```
 
-### Connecting to your servers
+2. Import the repository in Vercel. The SvelteKit preset and `vercel.json` need no changes.
+3. Set these environment variables, then deploy:
 
-Point each source at an address the container can reach, for example `http://192.168.1.10:8096` for Jellyfin or `http://192.168.1.10:32400` for Plex. Jellyfin needs an API key from its dashboard. Plex needs an `X-Plex-Token`.
+| Variable                | Required | Purpose                                                                     |
+| ----------------------- | -------- | --------------------------------------------------------------------------- |
+| `DATABASE_URL`          | Yes      | The `libsql://` URL from Turso                                              |
+| `DATABASE_AUTH_TOKEN`   | Yes      | The Turso database token                                                    |
+| `ADMIN_PASSWORD`        | Yes      | Admin password. First-run setup is turned off on Vercel                     |
+| `SECRET_KEY`            | Yes      | Encrypts source credentials. Changing it makes saved credentials unreadable |
+| `CRON_SECRET`           | Yes      | Protects `/api/cron`. Vercel sends it with its scheduled requests           |
+| `SYNC_INTERVAL_MINUTES` | No       | Minimum time between automatic syncs of a source. Default `360`             |
+| `TMDB_READ_TOKEN`       | No       | TMDB read access token. Turns on streaming availability lookups             |
+| `STREAMING_REGION`      | No       | Country used for streaming availability. Default `US`                       |
+| `ENABLE_MOCK_SOURCES`   | No       | `true` allows the sample-data source type in production                     |
+
+The cron job in `vercel.json` runs once a day at 06:00 UTC. It syncs sources that are due and checks streaming availability, stopping new work before the 60 second function limit. Anything left over is picked up by the next run or the buttons in Settings.
+
+Limits on Vercel:
+
+- Vercel cannot reach servers on your home network (addresses like `192.168.x.x`). Plex and Jellyfin sources only work if they have a public address, for example through a tunnel. Digital collections, streaming availability and sample data work as is.
+- A single sync has to finish within the 60 second function limit.
+
+## Run as a Node server
+
+`npm run build` outside Vercel produces a Node server in `build/` (`node build`). It uses a local SQLite file unless `DATABASE_URL` is set, and runs scheduled syncs itself. The `Dockerfile` and `compose.example.yaml` package this for Docker hosts such as Dokploy. Set `ORIGIN` to the public URL behind a reverse proxy, and back up the data volume. Point sources at addresses the container can reach, for example `http://192.168.1.10:8096` for Jellyfin or `http://192.168.1.10:32400` for Plex. Jellyfin needs an API key from its dashboard. Plex needs an `X-Plex-Token`.
 
 ### Digital collections
 
@@ -70,7 +83,7 @@ Years are optional but make matching more reliable. A title without a year joins
 
 ### Streaming availability
 
-Create a free TMDB account, copy the API read access token from its API settings, and set it as `TMDB_READ_TOKEN`. Then tick the services you subscribe to under Settings. Availability is checked after each sync and refreshed weekly, for titles with a TMDB ID. It reflects what each service offers in your region, not what is in your account. Streaming data comes from JustWatch via TMDB.
+Create a free TMDB account, copy the API read access token from its API settings, and set it as `TMDB_READ_TOKEN`. Then tick the services you subscribe to under Settings. Availability is checked by the scheduled job or the **Check availability** button, and rechecked weekly, for titles with a TMDB ID. It reflects what each service offers in your region, not what is in your account. Streaming data comes from JustWatch via TMDB.
 
 ## Development
 

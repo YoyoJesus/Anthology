@@ -17,9 +17,11 @@
 		"lint": "prettier --check .",
 		"format": "prettier --write .",
 		"test:unit": "vitest",
-		"test": "npm run test:unit -- --run"
+		"test": "npm run test:unit -- --run",
+		"icons": "node scripts/generate-icons.mjs"
 	},
 	"devDependencies": {
+		"@iconify-json/lucide": "^1.2.159",
 		"@iconify/svelte": "^5.2.4",
 		"@sveltejs/adapter-node": "^6.0.2",
 		"@sveltejs/kit": "^3.2.0",

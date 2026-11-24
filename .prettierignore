@@ -8,3 +8,4 @@ bun.lockb
 # Miscellaneous
 /static/
 PROJECT.md
+src/lib/icons.ts

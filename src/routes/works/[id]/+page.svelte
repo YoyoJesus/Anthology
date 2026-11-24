@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { afterNavigate } from '$app/navigation';
 	import Icon from '#lib/components/Icon.svelte';
+	import { GENRES } from '#lib/genres.ts';
 	import Poster from '#lib/components/Poster.svelte';
 	import SourceTag from '#lib/components/SourceTag.svelte';
 	import { serviceSearchUrl } from '#lib/service-links.ts';
@@ -8,6 +10,21 @@
 
 	let { data }: PageProps = $props();
 	const work = $derived(data.work);
+	const info = $derived(data.info);
+	const genreNames = $derived(work.genres.map((id) => GENRES.find((g) => g.id === id)?.name ?? id));
+
+	/** Coming from the library, "Library" steps back so filters, page and scroll position are kept. */
+	let fromLibrary = $state(false);
+	afterNavigate(({ from }) => {
+		fromLibrary = from?.url.pathname === '/';
+	});
+	function back(event: MouseEvent) {
+		if (!fromLibrary) return;
+		event.preventDefault();
+		history.back();
+	}
+
+	const personHref = (name: string) => `/?${new URLSearchParams({ q: name, by: 'person' })}`;
 
 	const providerLabels: Record<string, string> = {
 		tmdb: 'TMDB',
@@ -25,14 +42,55 @@
 
 <svelte:head><title>{work.title} · Anthology</title></svelte:head>
 
-<a href="/" class="btn btn-quiet -ml-2"><Icon name="arrow-left" />Library</a>
+<a href="/" class="btn btn-quiet -ml-2" onclick={back}><Icon name="arrow-left" />Library</a>
 
 <div class="mt-4 grid gap-8 sm:grid-cols-[minmax(0,14rem)_1fr]">
 	<Poster src={work.posterUrl} title={work.title} class="w-40 sm:w-full" />
 
 	<div class="min-w-0">
 		<h1 class="font-serif text-4xl leading-tight tracking-tight">{work.title}</h1>
-		<p class="mt-1 text-muted">{work.year ?? 'Unknown year'} · {work.kind === 'show' ? 'Show' : 'Movie'}</p>
+		<p class="mt-1 flex flex-wrap items-center gap-x-2 text-muted">
+			{#if work.rating}
+				<span class="inline-flex items-center gap-1 text-ink">
+					<Icon name="star" class="size-4 text-accent" />{work.rating.toFixed(1)}
+					<span class="text-xs text-faint">({work.votes.toLocaleString()} votes)</span>
+				</span>
+				·
+			{/if}
+			{work.year ?? 'Unknown year'} · {work.kind === 'show' ? 'Show' : 'Movie'}
+			{#if info?.runtime}· {info.runtime} min{work.kind === 'show' ? ' per episode' : ''}{/if}
+		</p>
+		{#if genreNames.length}
+			<p class="mt-1 text-sm text-muted">{genreNames.join(', ')}</p>
+		{/if}
+		{#if info?.overview}
+			<p class="mt-4 max-w-2xl leading-relaxed">{info.overview}</p>
+		{/if}
+		{#if info?.directors.length}
+			<p class="mt-4 text-sm">
+				<span class="text-muted">{work.kind === 'show' ? 'Created by' : 'Directed by'}</span>
+				{#each info.directors as name, i (name)}{i ? ', ' : ' '}<a
+						href={personHref(name)}
+						class="text-accent hover:underline"
+					>
+						{name}
+					</a>{/each}
+			</p>
+		{/if}
+		{#if info?.cast.length}
+			<p class="mt-1 text-sm">
+				<span class="text-muted">Starring</span>
+				{#each info.cast as name, i (name)}{i ? ', ' : ' '}<a
+						href={personHref(name)}
+						class="text-accent hover:underline"
+					>
+						{name}
+					</a>{/each}
+			</p>
+		{/if}
+		{#if work.rating || info}
+			<p class="mt-2 text-xs text-faint">Details and ratings from TMDB.</p>
+		{/if}
 
 		<h2 class="label mt-8">Available on</h2>
 		<ul class="mt-2 divide-y divide-line border-y border-line">

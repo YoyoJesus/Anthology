@@ -129,6 +129,7 @@
 {#if data.works.length}
 	<ul class="mt-6 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
 		{#each data.works as work (work.id)}
+			{@const extra = servicesNotListed(work.streaming, work.sources)}
 			<li>
 				<a href="/works/{work.id}" class="group block">
 					<Poster src={work.posterUrl} title={work.title} class="ring-accent transition group-hover:ring-2" />
@@ -144,7 +145,6 @@
 							<SourceTag name={source.sourceName} type={source.sourceType} />
 						{/each}
 					</div>
-					{@const extra = servicesNotListed(work.streaming, work.sources)}
 					{#if extra.length}
 						<p class="mt-0.5 truncate text-xs text-faint">
 							{extra.map((id) => serviceNames.get(id) ?? id).join(' · ')}

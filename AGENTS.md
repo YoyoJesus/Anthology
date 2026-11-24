@@ -9,7 +9,7 @@ Anthology is a self-hosted SvelteKit app that merges the libraries of several me
 - `src/lib/server/sync.ts`: full sync of one source. `WorkIndex` loads works once and matches in memory (override, external IDs, title + year, then a unique title when a year is missing). All writes go out through `writeBatch`, because a query per item is too slow against a remote database.
 - `src/lib/server/matcher.ts`: pure title normalization and ID helpers.
 - `src/lib/server/db.ts`: libSQL client (Turso on Vercel, a local SQLite file elsewhere), schema with FTS5 search, query helpers and database-backed locks. Every call is async. Do not rely on foreign key cascades: remote connections may not enforce them, so deletes are explicit (see `ORPHAN_CLEANUP`).
-- `src/lib/server/streaming.ts`: subscription availability from TMDB watch providers (data from JustWatch). Not a source: it enriches existing works by TMDB ID. Keep the JustWatch and TMDB attribution visible wherever this data is shown.
+- `src/lib/server/streaming.ts`: subscription availability from TMDB watch providers (data from JustWatch). Not a source: it enriches existing works by TMDB ID, searching TMDB by title and year when a work has none. Keep the JustWatch and TMDB attribution visible wherever this data is shown.
 - `src/lib/server/posters.ts`: fetches artwork through the adapter and passes on images only. Nothing is cached on the server.
 - `src/lib/server/jobs.ts`: sync and availability runs guarded by database locks, plus `runScheduledJobs`, used by `/api/cron` on Vercel and by an in-process timer elsewhere.
 - `src/lib/server/auth.ts`, `crypto.ts`: admin password, sessions, credential encryption.

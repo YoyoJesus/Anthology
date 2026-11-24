@@ -300,8 +300,8 @@
 	<p class="mt-4 text-sm text-muted">
 		{#if data.streaming.configured}
 			{data.streaming.checked}
-			{data.streaming.checked === 1 ? 'title' : 'titles'} checked. Availability refreshes after each sync and is rechecked
-			weekly. Only titles with a TMDB ID can be looked up.
+			{data.streaming.checked === 1 ? 'title' : 'titles'} checked. The daily job checks new titles and rechecks the rest weekly.
+			Titles without a TMDB ID are found by title and year.
 		{:else}
 			Set <code>TMDB_READ_TOKEN</code> to a TMDB API read access token to turn on lookups.
 		{/if}

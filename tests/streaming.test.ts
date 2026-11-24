@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+	pickSearchResult,
 	refreshAvailability,
 	servicesFromProviders,
 	setEnabledServices,
@@ -7,6 +8,7 @@ import {
 } from '../src/lib/server/streaming';
 import { syncSource } from '../src/lib/server/sync';
 import { browseWorks, getWork } from '../src/lib/server/works';
+import { all } from '../src/lib/server/db';
 import { addMockSource, memoryDb } from './helpers';
 
 const provider = (provider_name: string) => ({ provider_name });
@@ -51,6 +53,7 @@ async function syncedDb() {
 }
 
 const netflixEverywhere = vi.fn(async () => ({ results: { US: { flatrate: [provider('Netflix')] } } }));
+const noMatch = vi.fn(async () => null);
 
 describe('refreshAvailability', () => {
 	it('checks works with a TMDB ID and skips fresh ones', async () => {
@@ -59,6 +62,7 @@ describe('refreshAvailability', () => {
 			token: 't',
 			region: 'US',
 			fetchProviders: netflixEverywhere,
+			searchTitle: noMatch,
 			now: 1000
 		});
 		expect(first.checked).toBeGreaterThan(0);
@@ -67,6 +71,7 @@ describe('refreshAvailability', () => {
 			token: 't',
 			region: 'US',
 			fetchProviders: netflixEverywhere,
+			searchTitle: noMatch,
 			now: 2000
 		});
 		expect(second.checked).toBe(0);
@@ -74,6 +79,7 @@ describe('refreshAvailability', () => {
 			token: 't',
 			region: 'GB',
 			fetchProviders: netflixEverywhere,
+			searchTitle: noMatch,
 			now: 2000
 		});
 		expect(otherRegion.checked).toBe(first.checked);
@@ -81,7 +87,12 @@ describe('refreshAvailability', () => {
 
 	it('only surfaces services the user has enabled', async () => {
 		const db = await syncedDb();
-		await refreshAvailability(db, { token: 't', region: 'US', fetchProviders: netflixEverywhere });
+		await refreshAvailability(db, {
+			token: 't',
+			region: 'US',
+			fetchProviders: netflixEverywhere,
+			searchTitle: noMatch
+		});
 		expect((await browseWorks(db, { streaming: 'any' })).total).toBe(0);
 		await setEnabledServices(db, ['netflix']);
 		const onNetflix = (await browseWorks(db, { streaming: 'any' })).works;
@@ -96,6 +107,7 @@ describe('refreshAvailability', () => {
 			token: 't',
 			region: 'US',
 			fetchProviders: netflixEverywhere,
+			searchTitle: noMatch,
 			deadline: Date.now() - 1
 		});
 		expect(result.checked).toBe(0);
@@ -111,9 +123,63 @@ describe('refreshAvailability', () => {
 			token: 'bad',
 			region: 'US',
 			fetchProviders: rejected,
+			searchTitle: noMatch,
 			concurrency: 1
 		});
 		expect(result.error).toBe('TMDB rejected the read access token');
 		expect(rejected).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('pickSearchResult', () => {
+	const results = [
+		{ id: 1, title: 'Harbor Lights Returns', release_date: '2021-03-01' },
+		{ id: 2, title: 'Harbor Lights', release_date: '1990-05-01' },
+		{ id: 3, title: 'The Harbor Lights', release_date: '2020-12-20' }
+	];
+
+	it('needs an exact title and a year within one', () => {
+		expect(pickSearchResult(results, 'Harbor Lights', 2021)).toBe('3');
+		expect(pickSearchResult(results, 'Harbor Lights', 2005)).toBeNull();
+	});
+
+	it('takes the first exact title when the year is unknown', () => {
+		expect(pickSearchResult(results, 'Harbor Lights', null)).toBe('2');
+		expect(pickSearchResult(results, 'Lights', null)).toBeNull();
+	});
+
+	it('matches TV names', () => {
+		expect(
+			pickSearchResult([{ id: 9, name: 'Copper Valley', first_air_date: '2015-01-01' }], 'Copper Valley', 2015)
+		).toBe('9');
+	});
+});
+
+describe('refreshAvailability title search', () => {
+	it('finds missing TMDB IDs by title, stores them and skips titles with no match', async () => {
+		const db = await syncedDb();
+		const search = vi.fn(async (_kind: 'movie' | 'tv', title: string) => (title === 'Northbound' ? '777' : null));
+		const lookups: string[] = [];
+		const fetchProviders = vi.fn(async (_kind: 'movie' | 'tv', id: string) => {
+			lookups.push(id);
+			return { results: { US: { flatrate: [provider('Netflix')] } } };
+		});
+		const before = await all<{ title: string; external_ids_json: string }>(
+			db,
+			'SELECT title, external_ids_json FROM works'
+		);
+		const missing = before.filter((w) => !JSON.parse(w.external_ids_json).tmdb);
+		const result = await refreshAvailability(db, { token: 't', region: 'US', fetchProviders, searchTitle: search });
+		expect(search).toHaveBeenCalledTimes(missing.length);
+		expect(result.skipped).toBe(missing.filter((w) => w.title !== 'Northbound').length);
+		expect(result.checked + result.skipped).toBe(before.length);
+		expect(lookups).toContain('777');
+		const northbound = await all<{ external_ids_json: string }>(
+			db,
+			"SELECT external_ids_json FROM works WHERE title = 'Northbound'"
+		);
+		expect(JSON.parse(northbound[0].external_ids_json).tmdb).toBe('777');
+		const again = await refreshAvailability(db, { token: 't', region: 'US', fetchProviders, searchTitle: search });
+		expect(again.checked + again.skipped).toBe(0);
 	});
 });

@@ -153,10 +153,11 @@ export const actions: Actions = {
 		if (!result) return fail(409, { streaming: { error: 'A check is already running. Try again shortly.' } });
 		if (result.error) return fail(400, { streaming: { error: result.error } });
 		const failed = result.failed ? ` ${result.failed} lookups failed.` : '';
+		const skipped = result.skipped ? ` ${result.skipped} not found on TMDB.` : '';
 		const remaining = result.remaining ? ` ${result.remaining} left for the next run.` : '';
 		return {
 			streaming: {
-				notice: `Checked ${result.checked} ${result.checked === 1 ? 'title' : 'titles'}.${failed}${remaining}`
+				notice: `Checked ${result.checked} ${result.checked === 1 ? 'title' : 'titles'}.${skipped}${failed}${remaining}`
 			}
 		};
 	},

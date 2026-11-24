@@ -1,6 +1,6 @@
 import { STREAMING_SERVICES, type StreamingServiceId } from '#lib/types.ts';
 import { all, get, getSetting, setSetting, type DB } from './db';
-import { parseIds } from './matcher';
+import { normalizeTitle, parseIds } from './matcher';
 
 const TMDB_API = 'https://api.themoviedb.org/3';
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -55,6 +55,47 @@ export async function fetchWatchProviders(
 	return (await res.json()) as TmdbWatchProviders;
 }
 
+interface TmdbSearchResult {
+	id: number;
+	title?: string;
+	original_title?: string;
+	release_date?: string;
+	name?: string;
+	original_name?: string;
+	first_air_date?: string;
+}
+
+/** First result whose title matches exactly and whose year is within one of ours (when we know it). */
+export function pickSearchResult(results: TmdbSearchResult[], title: string, year: number | null): string | null {
+	const wanted = normalizeTitle(title);
+	for (const r of results) {
+		const titles = [r.title, r.original_title, r.name, r.original_name].filter((t): t is string => Boolean(t));
+		if (!titles.some((t) => normalizeTitle(t) === wanted)) continue;
+		const released = Number((r.release_date ?? r.first_air_date ?? '').slice(0, 4));
+		if (year !== null && (!released || Math.abs(released - year) > 1)) continue;
+		return String(r.id);
+	}
+	return null;
+}
+
+/** Finds a TMDB ID for titles that came without one, such as digital collection entries. */
+export async function searchTmdbId(
+	kind: 'movie' | 'tv',
+	title: string,
+	year: number | null,
+	token: string
+): Promise<string | null> {
+	const params = new URLSearchParams({ query: title, include_adult: 'false' });
+	const res = await fetch(`${TMDB_API}/search/${kind}?${params}`, {
+		headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+		signal: AbortSignal.timeout(15_000)
+	});
+	if (res.status === 401) throw new Error('TMDB rejected the read access token');
+	if (!res.ok) throw new Error(`TMDB responded with HTTP ${res.status}`);
+	const body = (await res.json()) as { results?: TmdbSearchResult[] };
+	return pickSearchResult(body.results ?? [], title, year);
+}
+
 export async function getEnabledServices(db: DB): Promise<StreamingServiceId[]> {
 	const known = STREAMING_SERVICES.map((s) => s.id) as string[];
 	try {
@@ -107,42 +148,58 @@ export interface RefreshOptions {
 	/** Stop starting new lookups after this time (ms since epoch). The rest are picked up next run. */
 	deadline?: number;
 	fetchProviders?: typeof fetchWatchProviders;
+	searchTitle?: typeof searchTmdbId;
 }
 
 export interface RefreshResult {
 	checked: number;
+	/** Titles TMDB had no confident match for. */
 	skipped: number;
 	failed: number;
 	remaining: number;
 	error: string | null;
 }
 
-/** Look up subscription availability for works with a TMDB ID that were not checked recently in this region. */
+/** Look up subscription availability for works not checked recently in this region, finding TMDB IDs by title when missing. */
 export async function refreshAvailability(db: DB, options: RefreshOptions): Promise<RefreshResult> {
 	const now = options.now ?? Date.now();
 	const fetchProviders = options.fetchProviders ?? fetchWatchProviders;
+	const searchTitle = options.searchTitle ?? searchTmdbId;
 	const works = await all<{
 		id: number;
 		kind: 'movie' | 'show';
+		title: string;
+		year: number | null;
 		external_ids_json: string;
 		region: string | null;
 		checked_at: number | null;
 	}>(
 		db,
-		`SELECT w.id, w.kind, w.external_ids_json, c.region, c.checked_at FROM works w
+		`SELECT w.id, w.kind, w.title, w.year, w.external_ids_json, c.region, c.checked_at FROM works w
 		LEFT JOIN availability_checks c ON c.work_id = w.id WHERE w.kind IN ('movie', 'show')`
 	);
 
-	const queue: { id: number; kind: 'movie' | 'tv'; tmdbId: string }[] = [];
-	let skipped = 0;
+	interface Job {
+		id: number;
+		kind: 'movie' | 'tv';
+		title: string;
+		year: number | null;
+		ids: ReturnType<typeof parseIds>;
+	}
+	const queue: Job[] = [];
 	for (const work of works) {
-		const tmdbId = parseIds(work.external_ids_json).tmdb;
 		const checkedAt = work.checked_at === null ? null : Number(work.checked_at);
 		const fresh = work.region === options.region && checkedAt !== null && now - checkedAt < MAX_AGE_MS;
-		if (!tmdbId) skipped++;
-		else if (options.force || !fresh)
-			queue.push({ id: Number(work.id), kind: work.kind === 'show' ? 'tv' : 'movie', tmdbId });
+		if (options.force || !fresh)
+			queue.push({
+				id: Number(work.id),
+				kind: work.kind === 'show' ? 'tv' : 'movie',
+				title: work.title,
+				year: work.year === null ? null : Number(work.year),
+				ids: parseIds(work.external_ids_json)
+			});
 	}
+	let skipped = 0;
 
 	const save = (workId: number, services: StreamingServiceId[], link: string | null) =>
 		db.batch(
@@ -170,7 +227,29 @@ export async function refreshAvailability(db: DB, options: RefreshOptions): Prom
 			const next = queue.shift();
 			if (!next) return;
 			try {
-				const payload = await fetchProviders(next.kind, next.tmdbId, options.token);
+				let tmdbId = next.ids.tmdb ?? null;
+				if (!tmdbId) {
+					tmdbId = await searchTitle(next.kind, next.title, next.year, options.token);
+					if (!tmdbId) {
+						await save(next.id, [], null);
+						skipped++;
+						continue;
+					}
+					await db.batch(
+						[
+							{
+								sql: 'INSERT OR IGNORE INTO work_external_ids (kind, provider, value, work_id) VALUES (?, ?, ?, ?)',
+								args: [next.kind === 'tv' ? 'show' : 'movie', 'tmdb', tmdbId, next.id]
+							},
+							{
+								sql: 'UPDATE works SET external_ids_json = ? WHERE id = ?',
+								args: [JSON.stringify({ ...next.ids, tmdb: tmdbId }), next.id]
+							}
+						],
+						'write'
+					);
+				}
+				const payload = await fetchProviders(next.kind, tmdbId, options.token);
 				const { services, link } = servicesFromProviders(payload, options.region);
 				await save(next.id, services, link);
 				checked++;

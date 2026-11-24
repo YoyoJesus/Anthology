@@ -1,5 +1,7 @@
 import type { MediaKind, SourceType, StreamingServiceId, WorkCard, WorkItem, WorkSource } from '#lib/types.ts';
 import { all, get, type DB } from './db';
+import { serviceSearchUrl } from '#lib/service-links.ts';
+import { serviceFromBaseUrl } from './adapters/streaming';
 import { parseIds } from './matcher';
 import { AVAILABLE_SQL, availabilityFor, getEnabledServices } from './streaming';
 
@@ -135,10 +137,11 @@ export async function getWork(db: DB, id: number): Promise<(WorkCard & { items: 
 			source_id: number;
 			source_name: string;
 			source_type: SourceType;
+			base_url: string;
 		}>(
 			db,
 			`SELECT i.id, i.title, i.year, i.link_url, i.external_ids_json, l.name AS library_name,
-				s.id AS source_id, s.name AS source_name, s.type AS source_type
+				s.id AS source_id, s.name AS source_name, s.type AS source_type, s.base_url
 			FROM items i JOIN libraries l ON l.id = i.library_id JOIN sources s ON s.id = l.source_id
 			WHERE i.work_id = ? ORDER BY s.name COLLATE NOCASE`,
 			[id]
@@ -158,7 +161,7 @@ export async function getWork(db: DB, id: number): Promise<(WorkCard & { items: 
 			id: Number(row.id),
 			title: row.title,
 			year: num(row.year),
-			linkUrl: row.link_url,
+			linkUrl: linkFor(row.source_type, row.base_url, row.title, row.link_url),
 			sourceId: Number(row.source_id),
 			sourceName: row.source_name,
 			sourceType: row.source_type,
@@ -166,6 +169,12 @@ export async function getWork(db: DB, id: number): Promise<(WorkCard & { items: 
 			externalIds: parseIds(row.external_ids_json)
 		}))
 	};
+}
+
+/** Streaming links are built from the current rules, so older syncs pick up changes without a resync. */
+function linkFor(type: SourceType, baseUrl: string, title: string, stored: string): string {
+	const service = type === 'streaming' ? serviceFromBaseUrl(baseUrl) : null;
+	return service ? serviceSearchUrl(service, title) : stored;
 }
 
 export async function getPosterRef(db: DB, itemId: number): Promise<{ posterRef: string; sourceId: number } | null> {

@@ -1,4 +1,5 @@
 import { STREAMING_SERVICES, type MediaKind, type StreamingServiceId } from '#lib/types.ts';
+import { serviceSearchUrl } from '#lib/service-links.ts';
 import { config } from '../config';
 import type { Library, RawItem, SourceAdapter, SourceConfig } from './types';
 
@@ -181,8 +182,7 @@ export function createStreamingAdapter(
 			}
 		},
 		buildLink(item) {
-			const kind = item.kind === 'show' ? 'tv' : 'movie';
-			return `https://www.themoviedb.org/${kind}/${encodeURIComponent(item.remoteId)}/watch?locale=${deps.region}`;
+			return service ? serviceSearchUrl(service, item.title) : '';
 		},
 		fetchPoster(posterRef) {
 			return fetchTmdbPoster(posterRef, deps.fetch);

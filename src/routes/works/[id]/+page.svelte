@@ -2,6 +2,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import Poster from '#lib/components/Poster.svelte';
 	import SourceTag from '#lib/components/SourceTag.svelte';
+	import { serviceSearchUrl } from '#lib/service-links.ts';
 	import { STREAMING_SERVICES } from '#lib/types.ts';
 	import type { PageProps } from './$types';
 
@@ -62,9 +63,15 @@
 
 		{#if work.streaming.length}
 			<h2 class="label mt-8">Streaming on</h2>
-			<p class="mt-2">
-				{work.streaming.map((id) => STREAMING_SERVICES.find((s) => s.id === id)?.name ?? id).join(', ')}
-			</p>
+			<div class="mt-2 flex flex-wrap gap-2">
+				{#each work.streaming as id (id)}
+					<a href={serviceSearchUrl(id, work.title)} target="_blank" rel="noopener noreferrer" class="btn">
+						{STREAMING_SERVICES.find((s) => s.id === id)?.name ?? id}
+						<Icon name="external-link" />
+					</a>
+				{/each}
+			</div>
+			<p class="mt-1 text-xs text-faint">Opens the service's search for this title.</p>
 			{#if data.watchLink}
 				<a
 					href={data.watchLink}

@@ -5,7 +5,7 @@ import { all } from '../src/lib/server/db';
 import { getSourceConfig, listSources, syncStreamingSources } from '../src/lib/server/sources';
 import { refreshAvailability, setEnabledServices } from '../src/lib/server/streaming';
 import { syncSource } from '../src/lib/server/sync';
-import { browseWorks } from '../src/lib/server/works';
+import { browseWorks, getWork } from '../src/lib/server/works';
 import { addMockSource, memoryDb, testKey } from './helpers';
 
 const PROVIDERS = [
@@ -79,7 +79,7 @@ describe('streaming catalogue adapter', () => {
 		expect(discover).toHaveLength(3);
 		expect(discover[0].searchParams.get('with_watch_providers')).toBe('8|1796');
 		expect(discover[0].searchParams.get('with_watch_monetization_types')).toBe('flatrate|ads');
-		expect(adapter.buildLink(items[0])).toBe('https://www.themoviedb.org/movie/1000/watch?locale=US');
+		expect(adapter.buildLink(items[0])).toBe('https://www.netflix.com/search?q=Synthetic%20Film%200');
 	});
 
 	it('counts only what Prime includes, not the store, add-on channels or the free tier', async () => {
@@ -150,6 +150,9 @@ describe('streaming sources', () => {
 		const harbor = onNetflix.find((w) => w.title === 'Harbor Lights')!;
 		expect(harbor.streaming).toEqual(['netflix']);
 		expect(harbor.sources.map((s) => s.sourceName).sort()).toEqual(['Alpha', 'Netflix']);
+		await db.execute("UPDATE items SET link_url = 'https://www.themoviedb.org/movie/900002/watch'");
+		const netflixItem = (await getWork(db, harbor.id))!.items.find((i) => i.sourceType === 'streaming')!;
+		expect(netflixItem.linkUrl).toBe('https://www.netflix.com/search?q=Harbor%20Lights');
 
 		const lookups = vi.fn(async (_kind: 'movie' | 'tv', _id: string) => ({}));
 		await refreshAvailability(db, { token: 't', region: 'US', fetchProviders: lookups, searchTitle: async () => null });

@@ -17,7 +17,8 @@ const NAMES = [
 	'circle-check',
 	'arrow-left',
 	'power',
-	'library'
+	'library',
+	'star'
 ];
 
 const width = icons.width ?? 24;

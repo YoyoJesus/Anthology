@@ -40,6 +40,8 @@ export interface WorkCard {
 	kind: MediaKind;
 	/** Same-origin poster URL, or null to show the title instead. */
 	posterUrl: string | null;
+	/** TMDB audience rating out of 10. */
+	rating: number | null;
 	sources: WorkSource[];
 	streaming: StreamingServiceId[];
 }

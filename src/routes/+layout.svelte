@@ -7,6 +7,18 @@
 
 	let { children, data }: LayoutProps = $props();
 	const onSettings = $derived(page.url.pathname.startsWith('/settings'));
+	const onLibrary = $derived(page.url.pathname === '/');
+	/** A new search keeps the library filters you already picked. */
+	const KEPT_FILTERS = ['kind', 'genre', 'rating', 'sort', 'source', 'streaming'];
+	const keptFilters = $derived(
+		onLibrary
+			? KEPT_FILTERS.flatMap((key) => {
+					const value = page.url.searchParams.get(key);
+					return value ? [[key, value] as const] : [];
+				})
+			: []
+	);
+	const searchBy = $derived(onLibrary && page.url.searchParams.get('by') === 'person' ? 'person' : '');
 </script>
 
 <svelte:head>
@@ -19,14 +31,22 @@
 		<div class="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
 			<a href="/" class="font-serif text-xl tracking-tight">Anthology</a>
 			<form action="/" method="get" class="ml-auto flex w-full max-w-sm items-center sm:ml-6" role="search">
+				{#each keptFilters as [key, value] (key)}<input type="hidden" name={key} {value} />{/each}
+				<label>
+					<span class="sr-only">Search by</span>
+					<select name="by" class="mr-2 text-sm" value={searchBy}>
+						<option value="">Titles</option>
+						<option value="person">People</option>
+					</select>
+				</label>
 				<label class="relative w-full">
 					<span class="sr-only">Search the library</span>
 					<Icon name="search" class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-faint" />
 					<input
 						type="search"
 						name="q"
-						value={page.url.pathname === '/' ? (page.url.searchParams.get('q') ?? '') : ''}
-						placeholder="Search titles"
+						value={onLibrary ? (page.url.searchParams.get('q') ?? '') : ''}
+						placeholder="Search titles or people"
 						class="w-full pl-9"
 					/>
 				</label>

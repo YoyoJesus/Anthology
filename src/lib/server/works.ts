@@ -1,3 +1,4 @@
+import type { GenreId } from '#lib/genres.ts';
 import type { MediaKind, SourceType, StreamingServiceId, WorkCard, WorkItem, WorkSource } from '#lib/types.ts';
 import { all, get, type DB } from './db';
 import { serviceSearchUrl } from '#lib/service-links.ts';
@@ -11,9 +12,32 @@ export interface BrowseQuery {
 	sourceId?: number;
 	/** A service ID, or 'any' for any of the enabled services. */
 	streaming?: StreamingServiceId | 'any';
+	genre?: GenreId;
+	/** Minimum TMDB rating out of 10. */
+	minRating?: number;
+	/** Limit to these TMDB IDs, for example everything one actor appears in. */
+	tmdbIds?: { movie: string[]; show: string[] };
+	sort?: BrowseSort;
 	limit?: number;
 	offset?: number;
 }
+
+export const BROWSE_SORTS = ['rating', 'title', 'newest'] as const;
+export type BrowseSort = (typeof BROWSE_SORTS)[number];
+
+/** Ratings with few votes are unreliable, so they only count towards a minimum-rating filter above this. */
+export const MIN_VOTES = 25;
+
+/**
+ * Weighted rating: a title's own average pulled towards 6.5 until it has a few hundred votes, so a film with two 10/10
+ * votes does not outrank a well-loved classic. Unrated titles sort last.
+ */
+const ORDER_BY: Record<BrowseSort, string> = {
+	rating:
+		'r.votes IS NULL OR r.rating IS NULL, (COALESCE(r.votes, 0) * COALESCE(r.rating, 0) + 200 * 6.5) / (COALESCE(r.votes, 0) + 200) DESC, w.title COLLATE NOCASE',
+	title: 'w.title COLLATE NOCASE, w.year',
+	newest: 'w.year IS NULL, w.year DESC, w.title COLLATE NOCASE'
+};
 
 /** Turn free text into a safe FTS5 prefix query, or null if nothing is searchable. */
 export function toFtsQuery(input: string): string | null {
@@ -32,6 +56,9 @@ interface WorkRow {
 	kind: MediaKind;
 	canonical_poster: number | null;
 	tmdb_poster: string | null;
+	rating?: number | null;
+	votes?: number | null;
+	external_ids_json?: string;
 }
 
 /** A source's own artwork first, then a TMDB poster found by title search. */
@@ -70,13 +97,30 @@ export async function browseWorks(db: DB, query: BrowseQuery): Promise<{ works: 
 		);
 		params.push(...services);
 	}
+	if (query.genre) {
+		where.push('w.id IN (SELECT work_id FROM work_genres WHERE genre = ?)');
+		params.push(query.genre);
+	}
+	if (query.minRating) {
+		where.push('w.id IN (SELECT work_id FROM work_ratings WHERE rating >= ? AND votes >= ?)');
+		params.push(query.minRating, MIN_VOTES);
+	}
+	if (query.tmdbIds) {
+		const { movie, show } = query.tmdbIds;
+		if (!movie.length && !show.length) return { works: [], total: 0 };
+		const list = (values: string[]) => (values.length ? values.map(() => '?').join(',') : 'NULL');
+		where.push(`w.id IN (SELECT work_id FROM work_external_ids WHERE provider = 'tmdb'
+			AND ((kind = 'movie' AND value IN (${list(movie)})) OR (kind = 'show' AND value IN (${list(show)}))))`);
+		params.push(...movie, ...show);
+	}
 	const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 	const [countRows, rows] = await Promise.all([
 		all<{ n: number }>(db, `SELECT COUNT(*) AS n FROM works w ${clause}`, params),
 		all<WorkRow>(
 			db,
-			`SELECT w.id, w.title, w.year, w.kind, ${POSTER_COLUMNS} FROM works w ${clause}
-			ORDER BY w.title COLLATE NOCASE, w.year LIMIT ? OFFSET ?`,
+			`SELECT w.id, w.title, w.year, w.kind, ${POSTER_COLUMNS}, r.rating FROM works w
+			LEFT JOIN work_ratings r ON r.work_id = w.id ${clause}
+			ORDER BY ${ORDER_BY[query.sort ?? 'rating']} LIMIT ? OFFSET ?`,
 			[...params, query.limit ?? 60, query.offset ?? 0]
 		)
 	]);
@@ -93,6 +137,7 @@ export async function browseWorks(db: DB, query: BrowseQuery): Promise<{ works: 
 				year: num(row.year),
 				kind: row.kind,
 				posterUrl: posterUrl(row),
+				rating: num(row.rating),
 				sources: sourcesByWork.get(id) ?? [],
 				streaming: streamingByWork.get(id) ?? []
 			};
@@ -119,10 +164,14 @@ async function workSources(db: DB, workIds: number[]): Promise<Map<number, WorkS
 	return map;
 }
 
-export async function getWork(db: DB, id: number): Promise<(WorkCard & { items: WorkItem[] }) | null> {
+export async function getWork(
+	db: DB,
+	id: number
+): Promise<(WorkCard & { items: WorkItem[]; votes: number; genres: GenreId[]; tmdbId: string | null }) | null> {
 	const work = await get<WorkRow>(
 		db,
-		`SELECT w.id, w.title, w.year, w.kind, ${POSTER_COLUMNS} FROM works w WHERE w.id = ?`,
+		`SELECT w.id, w.title, w.year, w.kind, w.external_ids_json, ${POSTER_COLUMNS}, r.rating, r.votes FROM works w
+		LEFT JOIN work_ratings r ON r.work_id = w.id WHERE w.id = ?`,
 		[id]
 	);
 	if (!work) return null;
@@ -155,6 +204,12 @@ export async function getWork(db: DB, id: number): Promise<(WorkCard & { items: 
 		year: num(work.year),
 		kind: work.kind,
 		posterUrl: posterUrl(work),
+		rating: num(work.rating),
+		votes: Number(work.votes ?? 0),
+		tmdbId: parseIds(work.external_ids_json).tmdb ?? null,
+		genres: (
+			await all<{ genre: GenreId }>(db, 'SELECT genre FROM work_genres WHERE work_id = ? ORDER BY genre', [id])
+		).map((g) => g.genre),
 		sources: sources.get(id) ?? [],
 		streaming: streaming.get(id) ?? [],
 		items: items.map((row) => ({

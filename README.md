@@ -15,6 +15,8 @@ A catalogue that pulls the libraries of your media servers into one searchable c
 - Posters fetched through the server so source credentials never reach the browser
 - Single admin password, set at first run or with `ADMIN_PASSWORD`
 - Source credentials encrypted at rest with `SECRET_KEY`
+- Sort by rating (the default), newest or title, filter by genre and minimum rating, and search by title or by actor and director
+- Title pages with rating, genres, summary, director and cast from TMDB
 - Digital collections: paste a list of titles you own on a store such as Apple TV, and they join the library like any other source
 - Optional streaming catalogues for Netflix, Prime Video, Hulu, Disney+ and Apple TV+: everything each service you tick offers in your region joins the library, and titles you own are marked when a service has them
 

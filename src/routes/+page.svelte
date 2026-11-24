@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '#lib/components/Icon.svelte';
 	import Poster from '#lib/components/Poster.svelte';
 	import SourceTag from '#lib/components/SourceTag.svelte';
 	import type { PageProps } from './$types';
@@ -13,6 +14,20 @@
 		{ value: 'show', label: 'Shows' }
 	];
 
+	function submit(event: Event & { currentTarget: HTMLSelectElement }) {
+		event.currentTarget.form?.requestSubmit();
+	}
+
+	const heading = $derived(
+		data.filters.by === 'person'
+			? data.person
+				? `Titles with ${data.person}`
+				: `No one found for “${data.filters.q}”`
+			: data.filters.q
+				? `Results for “${data.filters.q}”`
+				: 'Library'
+	);
+
 	function href(changes: Record<string, string | number>): string {
 		const params = new URLSearchParams();
 		const merged = { ...data.filters, page: '', ...changes };
@@ -26,9 +41,7 @@
 
 <div class="flex flex-wrap items-end justify-between gap-4">
 	<div>
-		<h1 class="font-serif text-3xl tracking-tight">
-			{data.filters.q ? `Results for “${data.filters.q}”` : 'Library'}
-		</h1>
+		<h1 class="font-serif text-3xl tracking-tight">{heading}</h1>
 		<p class="mt-1 text-sm text-muted">{data.total} {data.total === 1 ? 'title' : 'titles'}</p>
 	</div>
 
@@ -46,40 +59,71 @@
 				</a>
 			{/each}
 		</nav>
-		{#if data.sources.length > 1 || data.streamingServices.length}
-			<form method="get" action="/" class="flex flex-wrap gap-3">
-				{#if data.filters.q}<input type="hidden" name="q" value={data.filters.q} />{/if}
-				{#if data.filters.kind}<input type="hidden" name="kind" value={data.filters.kind} />{/if}
-				{#if data.sources.length > 1}
-					<label>
-						<span class="sr-only">Source</span>
-						<select name="source" onchange={(e) => e.currentTarget.form?.requestSubmit()}>
-							<option value="" selected={data.filters.source === ''}>All sources</option>
-							{#each data.sources as source (source.id)}
-								<option value={source.id} selected={data.filters.source === source.id}>{source.name}</option>
-							{/each}
-						</select>
-					</label>
-				{:else if data.filters.source}
-					<input type="hidden" name="source" value={data.filters.source} />
-				{/if}
-				{#if data.streamingServices.length}
-					<label>
-						<span class="sr-only">Streaming</span>
-						<select name="streaming" onchange={(e) => e.currentTarget.form?.requestSubmit()}>
-							<option value="" selected={data.filters.streaming === ''}>Any availability</option>
-							<option value="any" selected={data.filters.streaming === 'any'}>On my services</option>
-							{#each data.streamingServices as service (service.id)}
-								<option value={service.id} selected={data.filters.streaming === service.id}>On {service.name}</option>
-							{/each}
-						</select>
-					</label>
-				{/if}
-				<noscript><button class="btn">Apply</button></noscript>
-			</form>
-		{/if}
+		<form method="get" action="/" class="flex flex-wrap gap-3">
+			{#if data.filters.q}<input type="hidden" name="q" value={data.filters.q} />{/if}
+			{#if data.filters.by}<input type="hidden" name="by" value={data.filters.by} />{/if}
+			{#if data.filters.kind}<input type="hidden" name="kind" value={data.filters.kind} />{/if}
+			<label>
+				<span class="sr-only">Sort</span>
+				<select name="sort" onchange={submit}>
+					<option value="" selected={data.filters.sort === ''}>Top rated</option>
+					<option value="newest" selected={data.filters.sort === 'newest'}>Newest</option>
+					<option value="title" selected={data.filters.sort === 'title'}>Title</option>
+				</select>
+			</label>
+			<label>
+				<span class="sr-only">Genre</span>
+				<select name="genre" onchange={submit}>
+					<option value="" selected={data.filters.genre === ''}>All genres</option>
+					{#each data.genres as genre (genre.id)}
+						<option value={genre.id} selected={data.filters.genre === genre.id}>{genre.name}</option>
+					{/each}
+				</select>
+			</label>
+			<label>
+				<span class="sr-only">Minimum rating</span>
+				<select name="rating" onchange={submit}>
+					<option value="" selected={data.filters.rating === ''}>Any rating</option>
+					{#each data.ratings as rating (rating)}
+						<option value={rating} selected={data.filters.rating === rating}>{rating}+ rated</option>
+					{/each}
+				</select>
+			</label>
+			{#if data.sources.length > 1}
+				<label>
+					<span class="sr-only">Source</span>
+					<select name="source" onchange={submit}>
+						<option value="" selected={data.filters.source === ''}>All sources</option>
+						{#each data.sources as source (source.id)}
+							<option value={source.id} selected={data.filters.source === source.id}>{source.name}</option>
+						{/each}
+					</select>
+				</label>
+			{:else if data.filters.source}
+				<input type="hidden" name="source" value={data.filters.source} />
+			{/if}
+			{#if data.streamingServices.length}
+				<label>
+					<span class="sr-only">Streaming</span>
+					<select name="streaming" onchange={submit}>
+						<option value="" selected={data.filters.streaming === ''}>Any availability</option>
+						<option value="any" selected={data.filters.streaming === 'any'}>On my services</option>
+						{#each data.streamingServices as service (service.id)}
+							<option value={service.id} selected={data.filters.streaming === service.id}>On {service.name}</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
+			<noscript><button class="btn">Apply</button></noscript>
+		</form>
 	</div>
 </div>
+
+{#if data.personError}
+	<p class="mt-4 flex items-center gap-1.5 text-sm text-danger" role="alert">
+		<Icon name="circle-alert" />{data.personError}
+	</p>
+{/if}
 
 {#if data.works.length}
 	<ul class="mt-6 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
@@ -88,7 +132,12 @@
 				<a href="/works/{work.id}" class="group block">
 					<Poster src={work.posterUrl} title={work.title} class="ring-accent transition group-hover:ring-2" />
 					<p class="mt-2 truncate text-sm font-medium" title={work.title}>{work.title}</p>
-					<p class="text-xs text-faint">{work.year ?? 'Unknown year'} · {work.kind === 'show' ? 'Show' : 'Movie'}</p>
+					<p class="flex items-center gap-1 text-xs text-faint">
+						{#if work.rating}
+							<Icon name="star" class="size-3 text-accent" /><span class="text-muted">{work.rating.toFixed(1)}</span> ·
+						{/if}
+						{work.year ?? 'Unknown year'} · {work.kind === 'show' ? 'Show' : 'Movie'}
+					</p>
 					<div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
 						{#each work.sources as source (source.sourceId)}
 							<SourceTag name={source.sourceName} type={source.sourceType} />

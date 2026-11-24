@@ -73,7 +73,10 @@ function toConfig(row: SourceRow, key: Buffer): SourceConfig {
 
 export function getSourceConfig(db: DB, id: number, key = getCredentialKey()): SourceConfig | undefined {
 	const row = db.prepare('SELECT * FROM sources WHERE id = ?').get(id) as SourceRow | undefined;
-	return row ? toConfig(row, key) : undefined;
+	if (!row) return undefined;
+	const config = toConfig(row, key);
+	if (row.type === 'collection') config.collection = getCollection(db, id);
+	return config;
 }
 
 export function enabledSourceIds(db: DB): { id: number; lastSyncAt: string | null }[] {
@@ -90,13 +93,28 @@ export interface NewSource {
 	name: string;
 	baseUrl: string;
 	token: string;
+	collection?: string;
 }
 
 export function createSource(db: DB, input: NewSource, key = getCredentialKey()): number {
 	const result = db
 		.prepare('INSERT INTO sources (type, name, base_url, credentials_enc) VALUES (?, ?, ?, ?)')
 		.run(input.type, input.name, input.baseUrl, input.token ? encrypt(input.token, key) : null);
-	return Number(result.lastInsertRowid);
+	const id = Number(result.lastInsertRowid);
+	if (input.collection !== undefined) setCollection(db, id, input.collection);
+	return id;
+}
+
+export function getCollection(db: DB, sourceId: number): string {
+	const row = db.prepare('SELECT body FROM collection_lists WHERE source_id = ?').get(sourceId) as
+		{ body: string } | undefined;
+	return row?.body ?? '';
+}
+
+export function setCollection(db: DB, sourceId: number, body: string): void {
+	db.prepare(
+		'INSERT INTO collection_lists (source_id, body) VALUES (?, ?) ON CONFLICT(source_id) DO UPDATE SET body = excluded.body'
+	).run(sourceId, body);
 }
 
 export function setSourceEnabled(db: DB, id: number, enabled: boolean): void {

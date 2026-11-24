@@ -1,4 +1,5 @@
 import type { SourceType } from '#lib/types.ts';
+import { createCollectionAdapter } from './collection';
 import { createJellyfinAdapter } from './jellyfin';
 import { createMockAdapter } from './mock';
 import { createPlexAdapter } from './plex';
@@ -7,6 +8,7 @@ import type { SourceAdapter, SourceConfig } from './types';
 const FACTORIES: Partial<Record<SourceType, (source: SourceConfig) => SourceAdapter>> = {
 	plex: createPlexAdapter,
 	jellyfin: createJellyfinAdapter,
+	collection: createCollectionAdapter,
 	mock: createMockAdapter
 };
 

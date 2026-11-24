@@ -28,6 +28,11 @@ CREATE TABLE IF NOT EXISTS sources (
 	created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS collection_lists (
+	source_id INTEGER PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
+	body TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS libraries (
 	id INTEGER PRIMARY KEY,
 	source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,

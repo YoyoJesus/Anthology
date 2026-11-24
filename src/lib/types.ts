@@ -1,4 +1,4 @@
-export const SOURCE_TYPES = ['plex', 'jellyfin', 'navidrome', 'kodi', 'roms', 'mock'] as const;
+export const SOURCE_TYPES = ['plex', 'jellyfin', 'navidrome', 'kodi', 'roms', 'collection', 'mock'] as const;
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
 export const MEDIA_KINDS = ['movie', 'show', 'season', 'episode', 'album', 'track', 'artist', 'game'] as const;

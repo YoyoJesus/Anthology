@@ -23,6 +23,8 @@ export interface SourceConfig {
 	name: string;
 	baseUrl: string;
 	token: string;
+	/** Pasted title list, for collection sources. */
+	collection?: string;
 }
 
 export interface SourceAdapter {

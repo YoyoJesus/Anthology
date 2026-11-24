@@ -55,6 +55,16 @@
 
 <h1 class="font-serif text-3xl tracking-tight">Settings</h1>
 
+{#if data.deploymentDatabase}
+	<p class="mt-4 flex max-w-2xl items-start gap-2 text-sm text-danger" role="alert">
+		<Icon name="circle-alert" class="mt-0.5 shrink-0" />
+		<span>
+			This deployment has its own database, and the next deploy starts with an empty one. Set
+			<code>DATABASE_URL</code> and <code>DATABASE_AUTH_TOKEN</code> in Vercel to your main Turso database, then redeploy.
+		</span>
+	</p>
+{/if}
+
 <section class="mt-8" aria-labelledby="sources-heading">
 	<h2 id="sources-heading" class="text-lg font-medium">Sources</h2>
 

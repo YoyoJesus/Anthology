@@ -146,6 +146,15 @@ export function databaseLabel(url = config.databaseUrl): string {
 	}
 }
 
+/** Vercel's Turso integration can give each deployment its own database, named dpl-..., which the next deploy replaces. */
+export function isDeploymentDatabase(url = config.databaseUrl): boolean {
+	try {
+		return new URL(url).hostname.startsWith('dpl-');
+	} catch {
+		return false;
+	}
+}
+
 /** Vercel's filesystem does not outlive an instance, so a local file there would silently lose data. */
 export function databaseProblem(): string | null {
 	return config.onVercel && config.databaseUrl.startsWith('file:')

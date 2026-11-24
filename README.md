@@ -50,6 +50,8 @@ Anthology runs on Vercel with a [Turso](https://turso.tech) database (hosted lib
 | ----------------------- | -------- | --------------------------------------------------------------------------- |
 | `TURSO_DATABASE_URL`    | Yes      | The `libsql://` URL from Turso                                              |
 | `TURSO_AUTH_TOKEN`      | Yes      | The Turso database token                                                    |
+| `DATABASE_URL`          | No       | Overrides `TURSO_DATABASE_URL`. See the note below                          |
+| `DATABASE_AUTH_TOKEN`   | No       | Token for `DATABASE_URL`                                                    |
 | `ADMIN_PASSWORD`        | Yes      | Admin password. First-run setup is turned off on Vercel                     |
 | `SECRET_KEY`            | Yes      | Encrypts source credentials. Changing it makes saved credentials unreadable |
 | `CRON_SECRET`           | Yes      | Protects `/api/cron`. Vercel sends it with its scheduled requests           |
@@ -59,6 +61,8 @@ Anthology runs on Vercel with a [Turso](https://turso.tech) database (hosted lib
 | `ENABLE_MOCK_SOURCES`   | No       | `true` allows the sample-data source type in production                     |
 
 The cron jobs in `vercel.json` run three times a day (06:00, 14:00 and 22:00 UTC). Each run syncs the sources that are due, least recently synced first, then checks streaming availability for titles you own. It stops starting new work after four minutes, inside the 300 second function limit. Anything left over is picked up by the next run or the buttons in Settings.
+
+If you connect Turso through the Vercel Marketplace, check the database name at the bottom of Settings. A name starting with `dpl-` means each deployment has its own database, and the next deploy starts empty. Settings shows a warning when this happens. Set `DATABASE_URL` and `DATABASE_AUTH_TOKEN` to your main Turso database (`turso db show <name> --url`, `turso db tokens create <name>`) and redeploy. They take priority over the `TURSO_` values.
 
 Limits on Vercel:
 

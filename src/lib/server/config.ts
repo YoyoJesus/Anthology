@@ -21,9 +21,13 @@ export interface Config {
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
 	const dataDir = path.resolve(env.DATA_DIR || './data');
+	// DATABASE_URL wins, so a fixed database can override the per-deployment one an integration may inject as TURSO_*.
+	const [databaseUrl, databaseAuthToken] = env.DATABASE_URL
+		? [env.DATABASE_URL, env.DATABASE_AUTH_TOKEN]
+		: [env.TURSO_DATABASE_URL, env.TURSO_AUTH_TOKEN];
 	return {
-		databaseUrl: env.TURSO_DATABASE_URL || env.DATABASE_URL || `file:${path.join(dataDir, 'anthology.db')}`,
-		databaseAuthToken: env.TURSO_AUTH_TOKEN || env.DATABASE_AUTH_TOKEN || undefined,
+		databaseUrl: databaseUrl || `file:${path.join(dataDir, 'anthology.db')}`,
+		databaseAuthToken: databaseAuthToken || undefined,
 		dataDir,
 		adminPassword: env.ADMIN_PASSWORD || undefined,
 		secretKey: env.SECRET_KEY || undefined,

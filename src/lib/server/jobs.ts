@@ -7,7 +7,8 @@ import { syncSource, type SyncResult } from './sync';
 
 const SYNC_LOCK = 'sync';
 const AVAILABILITY_LOCK = 'availability';
-const LOCK_TTL_MS = 5 * 60 * 1000;
+/** Longer than the 300 second function limit, so a lock outlives the run that took it. */
+const LOCK_TTL_MS = 6 * 60 * 1000;
 
 export async function isSyncing(): Promise<boolean> {
 	return isLocked(await getDb(), SYNC_LOCK);
@@ -48,12 +49,15 @@ export interface ScheduledRun {
 	availability: RefreshResult | null;
 }
 
-/** Sync stale sources, then refresh availability, stopping new work once the time budget is spent. */
+/** Sync stale sources, least recently synced first, then refresh availability. No new work starts after the budget. */
 export async function runScheduledJobs(budgetMs: number, now = Date.now()): Promise<ScheduledRun> {
 	const deadline = now + budgetMs;
 	const intervalMs = config.syncIntervalMinutes * 60 * 1000;
 	const result: ScheduledRun = { synced: [], failed: [], availability: null };
-	for (const { id, lastSyncAt } of await enabledSourceIds(await getDb())) {
+	const sources = (await enabledSourceIds(await getDb())).sort((a, b) =>
+		(a.lastSyncAt ?? '').localeCompare(b.lastSyncAt ?? '')
+	);
+	for (const { id, lastSyncAt } of sources) {
 		if (Date.now() >= deadline) break;
 		const last = lastSyncAt ? Date.parse(`${lastSyncAt.replace(' ', 'T')}Z`) : 0;
 		if (now - last < intervalMs) continue;

@@ -13,5 +13,5 @@ function authorized(header: string | null, secret: string): boolean {
 export const GET: RequestHandler = async ({ request }) => {
 	if (!config.cronSecret) error(503, 'CRON_SECRET is not set');
 	if (!authorized(request.headers.get('authorization'), config.cronSecret)) error(401, 'Unauthorized');
-	return json(await runScheduledJobs(50_000));
+	return json(await runScheduledJobs(240_000));
 };

@@ -13,7 +13,7 @@ export default defineConfig({
 				runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true)
 			},
 			// Vercel sets VERCEL during its builds. Everywhere else (Docker, local) builds a Node server.
-			adapter: process.env.VERCEL ? vercelAdapter({ maxDuration: 60 }) : nodeAdapter()
+			adapter: process.env.VERCEL ? vercelAdapter({ maxDuration: 300 }) : nodeAdapter()
 		})
 	],
 	test: {

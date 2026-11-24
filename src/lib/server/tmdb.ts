@@ -1,4 +1,5 @@
 /** Live TMDB lookups for pages: people search and title details. Nothing here is stored. */
+import { TMDB_POSTER_PATH } from './adapters/streaming';
 const TMDB_API = 'https://api.themoviedb.org/3';
 
 async function tmdbGet<T>(
@@ -53,12 +54,21 @@ export async function findPersonCredits(
 	return { name: person.name, movie: ids('movie'), show: ids('tv') };
 }
 
+export interface CastMember {
+	name: string;
+	character: string | null;
+	/** TMDB image path, served through /posters/tmdb. */
+	photo: string | null;
+}
+
 export interface TitleInfo {
 	overview: string | null;
 	runtime: number | null;
-	cast: string[];
+	cast: CastMember[];
 	directors: string[];
 }
+
+const CAST_SIZE = 12;
 
 /** Summary, runtime, top-billed cast and directors (or creators, for shows). */
 export async function fetchTitleInfo(
@@ -72,7 +82,10 @@ export async function fetchTitleInfo(
 		runtime?: number;
 		episode_run_time?: number[];
 		created_by?: { name: string }[];
-		credits?: { cast?: { name: string; order?: number }[]; crew?: { name: string; job?: string }[] };
+		credits?: {
+			cast?: { name: string; order?: number; character?: string; profile_path?: string | null }[];
+			crew?: { name: string; job?: string }[];
+		};
 	}>(`/${kind}/${encodeURIComponent(tmdbId)}`, { append_to_response: 'credits' }, token, fetchFn);
 	const cast = [...(body.credits?.cast ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 	const directors =
@@ -82,7 +95,14 @@ export async function fetchTitleInfo(
 	return {
 		overview: body.overview?.trim() || null,
 		runtime: body.runtime || body.episode_run_time?.[0] || null,
-		cast: [...new Set(cast.slice(0, 10).map((c) => c.name))],
+		cast: cast
+			.filter((c, i) => cast.findIndex((other) => other.name === c.name) === i)
+			.slice(0, CAST_SIZE)
+			.map((c) => ({
+				name: c.name,
+				character: c.character?.trim() || null,
+				photo: c.profile_path && TMDB_POSTER_PATH.test(c.profile_path) ? c.profile_path : null
+			})),
 		directors: [...new Set(directors)]
 	};
 }

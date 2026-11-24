@@ -1,0 +1,102 @@
+# Anthology
+
+A catalogue that pulls the libraries of your media servers into one searchable collection. Each title links back to the server that has it, so playback still happens there.
+
+![Library view](docs/screenshots/library.png)
+
+## What works today
+
+- Plex and Jellyfin sources (movies and TV shows), added and tested from the settings page
+- A sample-data source for trying the app without a server (dev only, unless `ENABLE_MOCK_SOURCES=true`)
+- Full sync per source, on a schedule or with **Sync now**. Items removed from a source leave the library on the next sync
+- Matching across sources by external ID (TMDB, IMDb, TVDB), then by normalized title and year
+- Library browse with search, kind filter and source filter
+- Title pages listing every source that has the title, with a link to open it there
+- Posters fetched through the server so source credentials never reach the browser
+- Single admin password, set at first run or with `ADMIN_PASSWORD`
+- Source credentials encrypted at rest with `SECRET_KEY`
+- Digital collections: paste a list of titles you own on a store such as Apple TV, and they join the library like any other source
+- Optional streaming availability for Netflix, Prime Video, Hulu, Disney+ and Apple TV+, looked up through TMDB for titles already in your library
+
+See [PROJECT.md](PROJECT.md) for the full plan, including music, manual merge and split, and the stretch adapters.
+
+## Run locally
+
+```sh
+npm install
+npm run dev
+```
+
+Open the app, create the admin password, then add a **Sample data** source in Settings (pick Alpha for one and Beta for another to see matching) and press **Sync now**.
+
+Locally the database is a SQLite file in `./data`. Copy `.env.example` to `.env` to change settings.
+
+## Deploy to Vercel
+
+Anthology runs on Vercel with a [Turso](https://turso.tech) database (hosted libSQL, compatible with SQLite).
+
+1. Create a database and an access token with the Turso CLI:
+
+   ```sh
+   turso db create anthology
+   turso db show anthology --url
+   turso db tokens create anthology
+   ```
+
+2. Import the repository in Vercel. The SvelteKit preset and `vercel.json` need no changes.
+3. Set these environment variables, then deploy:
+
+| Variable                | Required | Purpose                                                                     |
+| ----------------------- | -------- | --------------------------------------------------------------------------- |
+| `DATABASE_URL`          | Yes      | The `libsql://` URL from Turso                                              |
+| `DATABASE_AUTH_TOKEN`   | Yes      | The Turso database token                                                    |
+| `ADMIN_PASSWORD`        | Yes      | Admin password. First-run setup is turned off on Vercel                     |
+| `SECRET_KEY`            | Yes      | Encrypts source credentials. Changing it makes saved credentials unreadable |
+| `CRON_SECRET`           | Yes      | Protects `/api/cron`. Vercel sends it with its scheduled requests           |
+| `SYNC_INTERVAL_MINUTES` | No       | Minimum time between automatic syncs of a source. Default `360`             |
+| `TMDB_READ_TOKEN`       | No       | TMDB read access token. Turns on streaming availability lookups             |
+| `STREAMING_REGION`      | No       | Country used for streaming availability. Default `US`                       |
+| `ENABLE_MOCK_SOURCES`   | No       | `true` allows the sample-data source type in production                     |
+
+The cron job in `vercel.json` runs once a day at 06:00 UTC. It syncs sources that are due and checks streaming availability, stopping new work before the 60 second function limit. Anything left over is picked up by the next run or the buttons in Settings.
+
+Limits on Vercel:
+
+- Vercel cannot reach servers on your home network (addresses like `192.168.x.x`). Plex and Jellyfin sources only work if they have a public address, for example through a tunnel. Digital collections, streaming availability and sample data work as is.
+- A single sync has to finish within the 60 second function limit.
+
+## Run as a Node server
+
+`npm run build` outside Vercel produces a Node server in `build/` (`node build`). It uses a local SQLite file unless `DATABASE_URL` is set, and runs scheduled syncs itself. The `Dockerfile` and `compose.example.yaml` package this for Docker hosts such as Dokploy. Set `ORIGIN` to the public URL behind a reverse proxy, and back up the data volume. Point sources at addresses the container can reach, for example `http://192.168.1.10:8096` for Jellyfin or `http://192.168.1.10:32400` for Plex. Jellyfin needs an API key from its dashboard. Plex needs an `X-Plex-Token`.
+
+### Digital collections
+
+Store purchases (Apple TV, Amazon, Google and similar) have no API Anthology can read, so add them as a **Digital collection** source and paste your titles, one per line:
+
+```text
+The Glass Orchard (2019)
+Northbound
+TV: Low Tide Club (2018)
+```
+
+Years are optional but make matching more reliable. A title without a year joins an existing title only when exactly one matches. Use **Edit list** on the source to change it later.
+
+### Streaming availability
+
+Create a free TMDB account, copy the API read access token from its API settings, and set it as `TMDB_READ_TOKEN`. Then tick the services you subscribe to under Settings. Availability is checked by the scheduled job or the **Check availability** button, and rechecked weekly, for titles with a TMDB ID. It reflects what each service offers in your region, not what is in your account. Streaming data comes from JustWatch via TMDB.
+
+## Development
+
+| Task        | Command          |
+| ----------- | ---------------- |
+| Dev server  | `npm run dev`    |
+| Type check  | `npm run check`  |
+| Lint        | `npm run lint`   |
+| Format      | `npm run format` |
+| Unit tests  | `npm test`       |
+| Build       | `npm run build`  |
+| Regen icons | `npm run icons`  |
+
+## License
+
+See [LICENSE](LICENSE).

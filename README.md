@@ -1,0 +1,69 @@
+# Anthology
+
+A self-hosted catalogue that pulls the libraries of your media servers into one searchable collection. Each title links back to the server that has it, so playback still happens there.
+
+![Library view](docs/screenshots/library.png)
+
+## What works today
+
+- Plex and Jellyfin sources (movies and TV shows), added and tested from the settings page
+- A sample-data source for trying the app without a server (dev only, unless `ENABLE_MOCK_SOURCES=true`)
+- Full sync per source, on a schedule or with **Sync now**. Items removed from a source leave the library on the next sync
+- Matching across sources by external ID (TMDB, IMDb, TVDB), then by normalized title and year
+- Library browse with search, kind filter and source filter
+- Title pages listing every source that has the title, with a link to open it there
+- Poster cache on disk with a size cap, falling back to the source when a poster is not cached
+- Single admin password, set at first run or with `ADMIN_PASSWORD`
+- Source credentials encrypted at rest with `SECRET_KEY`
+
+See [PROJECT.md](PROJECT.md) for the full plan, including music, manual merge and split, and the stretch adapters.
+
+## Run locally
+
+```sh
+npm install
+npm run dev
+```
+
+Open the app, create the admin password, then add a **Sample data** source in Settings (pick Alpha for one and Beta for another to see matching) and press **Sync now**.
+
+Data is stored in `./data` by default. Copy `.env.example` to `.env` to change settings.
+
+## Deploy with Docker
+
+```sh
+cp compose.example.yaml compose.yaml   # then edit the environment values
+docker compose up -d --build
+```
+
+| Variable                | Default                  | Purpose                                                                     |
+| ----------------------- | ------------------------ | --------------------------------------------------------------------------- |
+| `ORIGIN`                | none                     | Public URL. Required behind a reverse proxy so form posts are accepted      |
+| `ADMIN_PASSWORD`        | none                     | Admin password. If unset, the first visit asks you to create one            |
+| `SECRET_KEY`            | generated in `DATA_DIR`  | Encrypts source credentials. Changing it makes saved credentials unreadable |
+| `DATA_DIR`              | `./data` (`/data` image) | SQLite database, poster cache and generated key                             |
+| `POSTER_CACHE_MAX_MB`   | `500`                    | Poster cache size cap                                                       |
+| `SYNC_INTERVAL_MINUTES` | `360`                    | How often enabled sources sync automatically                                |
+| `ENABLE_MOCK_SOURCES`   | `false` in production    | Allow the sample-data source type                                           |
+
+Back up the data volume. It holds the database and the generated secret key if you did not set one.
+
+### Connecting to your servers
+
+Point each source at an address the container can reach, for example `http://192.168.1.10:8096` for Jellyfin or `http://192.168.1.10:32400` for Plex. Jellyfin needs an API key from its dashboard. Plex needs an `X-Plex-Token`.
+
+## Development
+
+| Task        | Command          |
+| ----------- | ---------------- |
+| Dev server  | `npm run dev`    |
+| Type check  | `npm run check`  |
+| Lint        | `npm run lint`   |
+| Format      | `npm run format` |
+| Unit tests  | `npm test`       |
+| Build       | `npm run build`  |
+| Regen icons | `npm run icons`  |
+
+## License
+
+See [LICENSE](LICENSE).

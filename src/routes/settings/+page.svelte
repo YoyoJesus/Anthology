@@ -39,7 +39,7 @@
 		return ({ action }) => {
 			busy = key;
 			return async ({ update }) => {
-				await update({ reset: !action.search.includes('testNew') });
+				await update({ reset: key === 'add' && !action.search.includes('testNew') });
 				busy = null;
 			};
 		};

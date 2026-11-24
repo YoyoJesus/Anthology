@@ -1,11 +1,14 @@
-import type { MediaKind, SourceType, WorkCard, WorkItem, WorkSource } from '#lib/types.ts';
+import type { MediaKind, SourceType, StreamingServiceId, WorkCard, WorkItem, WorkSource } from '#lib/types.ts';
 import type { DB } from './db';
 import { parseIds } from './matcher';
+import { availabilityFor, getEnabledServices } from './streaming';
 
 export interface BrowseQuery {
 	q?: string;
 	kind?: MediaKind;
 	sourceId?: number;
+	/** A service ID, or 'any' for any of the enabled services. */
+	streaming?: StreamingServiceId | 'any';
 	limit?: number;
 	offset?: number;
 }
@@ -37,6 +40,15 @@ export function browseWorks(db: DB, query: BrowseQuery): { works: WorkCard[]; to
 		where.push('w.id IN (SELECT i.work_id FROM items i JOIN libraries l ON l.id = i.library_id WHERE l.source_id = ?)');
 		params.push(query.sourceId);
 	}
+	if (query.streaming) {
+		const enabled = getEnabledServices(db);
+		const services = query.streaming === 'any' ? enabled : enabled.filter((s) => s === query.streaming);
+		if (!services.length) return { works: [], total: 0 };
+		where.push(
+			`w.id IN (SELECT work_id FROM work_availability WHERE service IN (${services.map(() => '?').join(',')}))`
+		);
+		params.push(...services);
+	}
 	const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 	const total = (db.prepare(`SELECT COUNT(*) AS n FROM works w ${clause}`).get(...params) as { n: number }).n;
 	const rows = db
@@ -52,10 +64,9 @@ export function browseWorks(db: DB, query: BrowseQuery): { works: WorkCard[]; to
 		canonical_poster: number | null;
 	}[];
 
-	const sourcesByWork = workSources(
-		db,
-		rows.map((row) => row.id)
-	);
+	const ids = rows.map((row) => row.id);
+	const sourcesByWork = workSources(db, ids);
+	const streamingByWork = availabilityFor(db, ids);
 	return {
 		total,
 		works: rows.map((row) => ({
@@ -64,7 +75,8 @@ export function browseWorks(db: DB, query: BrowseQuery): { works: WorkCard[]; to
 			year: row.year,
 			kind: row.kind,
 			posterItemId: row.canonical_poster,
-			sources: sourcesByWork.get(row.id) ?? []
+			sources: sourcesByWork.get(row.id) ?? [],
+			streaming: streamingByWork.get(row.id) ?? []
 		}))
 	};
 }
@@ -116,6 +128,7 @@ export function getWork(db: DB, id: number): (WorkCard & { items: WorkItem[] }) 
 		kind: work.kind,
 		posterItemId: work.canonical_poster,
 		sources: workSources(db, [id]).get(id) ?? [],
+		streaming: availabilityFor(db, [id]).get(id) ?? [],
 		items: items.map((row) => ({
 			id: row.id,
 			title: row.title,

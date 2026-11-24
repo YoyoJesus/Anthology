@@ -12,6 +12,8 @@ export interface Config {
 	posterCacheMaxBytes: number;
 	syncIntervalMinutes: number;
 	enableMockSources: boolean;
+	tmdbToken: string | undefined;
+	streamingRegion: string;
 }
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -21,7 +23,9 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		secretKey: env.SECRET_KEY || undefined,
 		posterCacheMaxBytes: positiveNumber(env.POSTER_CACHE_MAX_MB, 500) * 1024 * 1024,
 		syncIntervalMinutes: positiveNumber(env.SYNC_INTERVAL_MINUTES, 360),
-		enableMockSources: env.ENABLE_MOCK_SOURCES === 'true' || env.NODE_ENV !== 'production'
+		enableMockSources: env.ENABLE_MOCK_SOURCES === 'true' || env.NODE_ENV !== 'production',
+		tmdbToken: env.TMDB_READ_TOKEN || undefined,
+		streamingRegion: /^[A-Za-z]{2}$/.test(env.STREAMING_REGION ?? '') ? env.STREAMING_REGION!.toUpperCase() : 'US'
 	};
 }
 

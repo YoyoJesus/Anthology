@@ -31,6 +31,7 @@ export interface WorkCard {
 	kind: MediaKind;
 	posterItemId: number | null;
 	sources: WorkSource[];
+	streaming: StreamingServiceId[];
 }
 
 export interface WorkItem {
@@ -44,3 +45,12 @@ export interface WorkItem {
 	libraryName: string;
 	externalIds: ExternalIds;
 }
+
+export const STREAMING_SERVICES = [
+	{ id: 'netflix', name: 'Netflix' },
+	{ id: 'prime', name: 'Prime Video' },
+	{ id: 'hulu', name: 'Hulu' },
+	{ id: 'disney', name: 'Disney+' },
+	{ id: 'appletv', name: 'Apple TV+' }
+] as const;
+export type StreamingServiceId = (typeof STREAMING_SERVICES)[number]['id'];

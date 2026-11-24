@@ -88,6 +88,19 @@ CREATE TABLE IF NOT EXISTS poster_cache (
 	last_access INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS work_availability (
+	work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+	service TEXT NOT NULL,
+	PRIMARY KEY (work_id, service)
+);
+
+CREATE TABLE IF NOT EXISTS availability_checks (
+	work_id INTEGER PRIMARY KEY REFERENCES works(id) ON DELETE CASCADE,
+	region TEXT NOT NULL,
+	link TEXT,
+	checked_at INTEGER NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS works_fts USING fts5 (title, tokenize = 'unicode61 remove_diacritics 2');
 `;
 

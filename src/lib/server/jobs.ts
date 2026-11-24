@@ -3,6 +3,7 @@ import { config } from './config';
 import { getDb } from './db';
 import { PosterCache } from './posters';
 import { enabledSourceIds, getSourceConfig } from './sources';
+import { refreshAvailability, type RefreshResult } from './streaming';
 import { syncSource, type SyncResult } from './sync';
 
 const running = new Set<number>();
@@ -23,10 +24,28 @@ export async function runSync(sourceId: number): Promise<SyncResult> {
 		const posters = new PosterCache(db);
 		posters.pruneOrphans();
 		posters.prefetch(sourceId, adapter).catch((err) => console.error('Poster prefetch failed', err));
+		runAvailabilityRefresh().catch((err) => console.error('Streaming availability refresh failed', err));
 		return result;
 	} finally {
 		running.delete(sourceId);
 	}
+}
+
+let availabilityRun: Promise<RefreshResult> | null = null;
+
+export function isRefreshingAvailability(): boolean {
+	return availabilityRun !== null;
+}
+
+/** Returns null when no TMDB token is configured. Concurrent callers share one run. */
+export function runAvailabilityRefresh(force = false): Promise<RefreshResult | null> {
+	if (!config.tmdbToken) return Promise.resolve(null);
+	availabilityRun ??= refreshAvailability(getDb(), {
+		token: config.tmdbToken,
+		region: config.streamingRegion,
+		force
+	}).finally(() => (availabilityRun = null));
+	return availabilityRun;
 }
 
 let timer: ReturnType<typeof setInterval> | undefined;

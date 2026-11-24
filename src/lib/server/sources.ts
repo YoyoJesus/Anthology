@@ -4,16 +4,17 @@ import { randomBytes } from 'node:crypto';
 import type { SourceSummary, SourceType } from '#lib/types.ts';
 import { config } from './config';
 import { decrypt, deriveKey, encrypt } from './crypto';
-import type { DB } from './db';
+import { all, get, run, writeBatch, type DB } from './db';
 import type { SourceConfig } from './adapters/types';
 
 let cachedKey: Buffer | undefined;
 
-/** Uses SECRET_KEY, or a key generated once and kept in the data directory. */
+/** Uses SECRET_KEY. Outside Vercel, a key is generated once and kept in the data directory. */
 export function getCredentialKey(): Buffer {
 	if (cachedKey) return cachedKey;
 	let secret = config.secretKey;
 	if (!secret) {
+		if (config.onVercel) throw new Error('SECRET_KEY must be set on Vercel');
 		const file = path.join(config.dataDir, 'secret.key');
 		if (fs.existsSync(file)) {
 			secret = fs.readFileSync(file, 'utf8').trim();
@@ -39,53 +40,47 @@ interface SourceRow {
 	last_sync_error: string | null;
 }
 
-export function listSources(db: DB): SourceSummary[] {
-	const rows = db
-		.prepare(
-			`SELECT s.*,
-				(SELECT COUNT(*) FROM libraries l WHERE l.source_id = s.id) AS library_count,
-				(SELECT COUNT(*) FROM items i JOIN libraries l ON l.id = i.library_id WHERE l.source_id = s.id) AS item_count
-			FROM sources s ORDER BY s.name COLLATE NOCASE`
-		)
-		.all() as (SourceRow & { library_count: number; item_count: number })[];
+export async function listSources(db: DB): Promise<SourceSummary[]> {
+	const rows = await all<SourceRow & { library_count: number; item_count: number }>(
+		db,
+		`SELECT s.*,
+			(SELECT COUNT(*) FROM libraries l WHERE l.source_id = s.id) AS library_count,
+			(SELECT COUNT(*) FROM items i JOIN libraries l ON l.id = i.library_id WHERE l.source_id = s.id) AS item_count
+		FROM sources s ORDER BY s.name COLLATE NOCASE`
+	);
 	return rows.map((row) => ({
-		id: row.id,
+		id: Number(row.id),
 		type: row.type,
 		name: row.name,
 		baseUrl: row.base_url,
-		enabled: row.enabled === 1,
+		enabled: Number(row.enabled) === 1,
 		lastSyncAt: row.last_sync_at,
 		lastSyncError: row.last_sync_error,
-		libraryCount: row.library_count,
-		itemCount: row.item_count
+		libraryCount: Number(row.library_count),
+		itemCount: Number(row.item_count)
 	}));
 }
 
-function toConfig(row: SourceRow, key: Buffer): SourceConfig {
-	return {
-		id: row.id,
+export async function getSourceConfig(db: DB, id: number, key = getCredentialKey()): Promise<SourceConfig | undefined> {
+	const row = await get<SourceRow>(db, 'SELECT * FROM sources WHERE id = ?', [id]);
+	if (!row) return undefined;
+	const source: SourceConfig = {
+		id: Number(row.id),
 		type: row.type,
 		name: row.name,
 		baseUrl: row.base_url,
 		token: row.credentials_enc ? decrypt(row.credentials_enc, key) : ''
 	};
+	if (row.type === 'collection') source.collection = await getCollection(db, source.id);
+	return source;
 }
 
-export function getSourceConfig(db: DB, id: number, key = getCredentialKey()): SourceConfig | undefined {
-	const row = db.prepare('SELECT * FROM sources WHERE id = ?').get(id) as SourceRow | undefined;
-	if (!row) return undefined;
-	const config = toConfig(row, key);
-	if (row.type === 'collection') config.collection = getCollection(db, id);
-	return config;
-}
-
-export function enabledSourceIds(db: DB): { id: number; lastSyncAt: string | null }[] {
-	return (
-		db.prepare('SELECT id, last_sync_at FROM sources WHERE enabled = 1').all() as {
-			id: number;
-			last_sync_at: string | null;
-		}[]
-	).map((row) => ({ id: row.id, lastSyncAt: row.last_sync_at }));
+export async function enabledSourceIds(db: DB): Promise<{ id: number; lastSyncAt: string | null }[]> {
+	const rows = await all<{ id: number; last_sync_at: string | null }>(
+		db,
+		'SELECT id, last_sync_at FROM sources WHERE enabled = 1'
+	);
+	return rows.map((row) => ({ id: Number(row.id), lastSyncAt: row.last_sync_at }));
 }
 
 export interface NewSource {
@@ -96,39 +91,53 @@ export interface NewSource {
 	collection?: string;
 }
 
-export function createSource(db: DB, input: NewSource, key = getCredentialKey()): number {
-	const result = db
-		.prepare('INSERT INTO sources (type, name, base_url, credentials_enc) VALUES (?, ?, ?, ?)')
-		.run(input.type, input.name, input.baseUrl, input.token ? encrypt(input.token, key) : null);
-	const id = Number(result.lastInsertRowid);
-	if (input.collection !== undefined) setCollection(db, id, input.collection);
+export async function createSource(db: DB, input: NewSource, key = getCredentialKey()): Promise<number> {
+	const result = await run(db, 'INSERT INTO sources (type, name, base_url, credentials_enc) VALUES (?, ?, ?, ?)', [
+		input.type,
+		input.name,
+		input.baseUrl,
+		input.token ? encrypt(input.token, key) : null
+	]);
+	const id = result.lastInsertRowid;
+	if (input.collection !== undefined) await setCollection(db, id, input.collection);
 	return id;
 }
 
-export function getCollection(db: DB, sourceId: number): string {
-	const row = db.prepare('SELECT body FROM collection_lists WHERE source_id = ?').get(sourceId) as
-		{ body: string } | undefined;
-	return row?.body ?? '';
+export async function getCollection(db: DB, sourceId: number): Promise<string> {
+	return (
+		(await get<{ body: string }>(db, 'SELECT body FROM collection_lists WHERE source_id = ?', [sourceId]))?.body ?? ''
+	);
 }
 
-export function setCollection(db: DB, sourceId: number, body: string): void {
-	db.prepare(
-		'INSERT INTO collection_lists (source_id, body) VALUES (?, ?) ON CONFLICT(source_id) DO UPDATE SET body = excluded.body'
-	).run(sourceId, body);
+export async function setCollection(db: DB, sourceId: number, body: string): Promise<void> {
+	await run(
+		db,
+		'INSERT INTO collection_lists (source_id, body) VALUES (?, ?) ON CONFLICT(source_id) DO UPDATE SET body = excluded.body',
+		[sourceId, body]
+	);
 }
 
-export function setSourceEnabled(db: DB, id: number, enabled: boolean): void {
-	db.prepare('UPDATE sources SET enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
+export async function setSourceEnabled(db: DB, id: number, enabled: boolean): Promise<void> {
+	await run(db, 'UPDATE sources SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id]);
 }
 
-export function deleteSource(db: DB, id: number): void {
-	db.transaction(() => {
-		db.prepare('DELETE FROM sources WHERE id = ?').run(id);
-		removeOrphanWorks(db);
-	})();
-}
+/** Explicit cleanup, since foreign key enforcement is not guaranteed on every libSQL connection. */
+export const ORPHAN_CLEANUP = [
+	'DELETE FROM items WHERE library_id NOT IN (SELECT id FROM libraries)',
+	'DELETE FROM overrides WHERE item_id NOT IN (SELECT id FROM items)',
+	'DELETE FROM works WHERE id NOT IN (SELECT work_id FROM items)',
+	'DELETE FROM work_external_ids WHERE work_id NOT IN (SELECT id FROM works)',
+	'DELETE FROM work_availability WHERE work_id NOT IN (SELECT id FROM works)',
+	'DELETE FROM availability_checks WHERE work_id NOT IN (SELECT id FROM works)',
+	'DELETE FROM works_fts',
+	'INSERT INTO works_fts (rowid, title) SELECT id, title FROM works'
+];
 
-export function removeOrphanWorks(db: DB): void {
-	db.prepare('DELETE FROM works WHERE id NOT IN (SELECT work_id FROM items)').run();
-	db.exec('DELETE FROM works_fts; INSERT INTO works_fts (rowid, title) SELECT id, title FROM works;');
+export async function deleteSource(db: DB, id: number): Promise<void> {
+	await writeBatch(db, [
+		{ sql: 'DELETE FROM collection_lists WHERE source_id = ?', args: [id] },
+		{ sql: 'DELETE FROM libraries WHERE source_id = ?', args: [id] },
+		{ sql: 'DELETE FROM sources WHERE id = ?', args: [id] },
+		...ORPHAN_CLEANUP
+	]);
 }

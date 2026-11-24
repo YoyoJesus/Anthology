@@ -44,8 +44,8 @@ describe('servicesFromProviders', () => {
 });
 
 async function syncedDb() {
-	const db = memoryDb();
-	const { id, adapter } = addMockSource(db, 'Alpha', 'alpha');
+	const db = await memoryDb();
+	const { id, adapter } = await addMockSource(db, 'Alpha', 'alpha');
 	await syncSource(db, id, adapter);
 	return db;
 }
@@ -82,12 +82,24 @@ describe('refreshAvailability', () => {
 	it('only surfaces services the user has enabled', async () => {
 		const db = await syncedDb();
 		await refreshAvailability(db, { token: 't', region: 'US', fetchProviders: netflixEverywhere });
-		expect(browseWorks(db, { streaming: 'any' }).total).toBe(0);
-		setEnabledServices(db, ['netflix']);
-		const onNetflix = browseWorks(db, { streaming: 'any' }).works;
+		expect((await browseWorks(db, { streaming: 'any' })).total).toBe(0);
+		await setEnabledServices(db, ['netflix']);
+		const onNetflix = (await browseWorks(db, { streaming: 'any' })).works;
 		expect(onNetflix.length).toBeGreaterThan(0);
-		expect(getWork(db, onNetflix[0].id)?.streaming).toEqual(['netflix']);
-		expect(browseWorks(db, { streaming: 'hulu' }).total).toBe(0);
+		expect((await getWork(db, onNetflix[0].id))?.streaming).toEqual(['netflix']);
+		expect((await browseWorks(db, { streaming: 'hulu' })).total).toBe(0);
+	});
+
+	it('leaves the rest for the next run once the deadline passes', async () => {
+		const db = await syncedDb();
+		const result = await refreshAvailability(db, {
+			token: 't',
+			region: 'US',
+			fetchProviders: netflixEverywhere,
+			deadline: Date.now() - 1
+		});
+		expect(result.checked).toBe(0);
+		expect(result.remaining).toBeGreaterThan(0);
 	});
 
 	it('stops early when TMDB rejects the token', async () => {

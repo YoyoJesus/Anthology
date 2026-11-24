@@ -4,6 +4,7 @@ import { createSource, getSourceConfig } from '../src/lib/server/sources';
 import { syncSource } from '../src/lib/server/sync';
 import { parseSourceForm } from '../src/lib/server/validation';
 import { browseWorks } from '../src/lib/server/works';
+import type { DB } from '../src/lib/server/db';
 import { addMockSource, memoryDb, testKey } from './helpers';
 
 describe('parseCollection', () => {
@@ -33,22 +34,22 @@ describe('parseCollection', () => {
 });
 
 async function libraryWithCollection(list: string) {
-	const db = memoryDb();
-	const mock = addMockSource(db, 'Server', 'alpha');
+	const db = await memoryDb();
+	const mock = await addMockSource(db, 'Server', 'alpha');
 	await syncSource(db, mock.id, mock.adapter);
-	const id = createSource(
+	const id = await createSource(
 		db,
 		{ type: 'collection', name: 'Apple TV', baseUrl: 'collection://local', token: '', collection: list },
 		testKey
 	);
-	const config = getSourceConfig(db, id, testKey)!;
+	const config = (await getSourceConfig(db, id, testKey))!;
 	await syncSource(db, id, createCollectionAdapter(config));
 	return { db, id };
 }
 
-function sourcesOf(db: ReturnType<typeof memoryDb>, title: string) {
-	return browseWorks(db, { q: title })
-		.works.filter((w) => w.title === title)
+async function sourcesOf(db: DB, title: string) {
+	return (await browseWorks(db, { q: title })).works
+		.filter((w) => w.title === title)
 		.map((w) => ({ year: w.year, sources: w.sources.map((s) => s.sourceName) }));
 }
 
@@ -57,39 +58,39 @@ describe('collection sources', () => {
 		const { db, id } = await libraryWithCollection(
 			'The Glass Orchard (2019)\nNorthbound\nTV: Low Tide Club (2018)\nA Film Only I Own (2001)'
 		);
-		expect(getSourceConfig(db, id, testKey)?.collection).toContain('Northbound');
-		expect(sourcesOf(db, 'The Glass Orchard')).toEqual([{ year: 2019, sources: ['Apple TV', 'Server'] }]);
-		expect(sourcesOf(db, 'Northbound')).toEqual([{ year: 2016, sources: ['Apple TV', 'Server'] }]);
-		expect(sourcesOf(db, 'Low Tide Club')).toEqual([{ year: 2018, sources: ['Apple TV', 'Server'] }]);
-		expect(sourcesOf(db, 'A Film Only I Own')).toEqual([{ year: 2001, sources: ['Apple TV'] }]);
+		expect((await getSourceConfig(db, id, testKey))?.collection).toContain('Northbound');
+		expect(await sourcesOf(db, 'The Glass Orchard')).toEqual([{ year: 2019, sources: ['Apple TV', 'Server'] }]);
+		expect(await sourcesOf(db, 'Northbound')).toEqual([{ year: 2016, sources: ['Apple TV', 'Server'] }]);
+		expect(await sourcesOf(db, 'Low Tide Club')).toEqual([{ year: 2018, sources: ['Apple TV', 'Server'] }]);
+		expect(await sourcesOf(db, 'A Film Only I Own')).toEqual([{ year: 2001, sources: ['Apple TV'] }]);
 	});
 
 	it('does not guess when a yearless title matches more than one work', async () => {
-		const db = memoryDb();
-		const a = addMockSource(db, 'A', 'alpha');
-		const b = addMockSource(db, 'B', 'beta');
+		const db = await memoryDb();
+		const a = await addMockSource(db, 'A', 'alpha');
+		const b = await addMockSource(db, 'B', 'beta');
 		await syncSource(db, a.id, a.adapter);
 		await syncSource(db, b.id, b.adapter);
-		const id = createSource(
+		const id = await createSource(
 			db,
 			{ type: 'collection', name: 'Apple TV', baseUrl: 'collection://local', token: '', collection: 'Second Draft' },
 			testKey
 		);
-		await syncSource(db, id, createCollectionAdapter(getSourceConfig(db, id, testKey)!));
-		expect(sourcesOf(db, 'Second Draft')).toHaveLength(3);
+		await syncSource(db, id, createCollectionAdapter((await getSourceConfig(db, id, testKey))!));
+		expect(await sourcesOf(db, 'Second Draft')).toHaveLength(3);
 	});
 
 	it('gives a yearless work the year of a later match', async () => {
-		const db = memoryDb();
-		const id = createSource(
+		const db = await memoryDb();
+		const id = await createSource(
 			db,
 			{ type: 'collection', name: 'Apple TV', baseUrl: 'collection://local', token: '', collection: 'Copper Valley' },
 			testKey
 		);
-		await syncSource(db, id, createCollectionAdapter(getSourceConfig(db, id, testKey)!));
-		const mock = addMockSource(db, 'Server', 'alpha');
+		await syncSource(db, id, createCollectionAdapter((await getSourceConfig(db, id, testKey))!));
+		const mock = await addMockSource(db, 'Server', 'alpha');
 		await syncSource(db, mock.id, mock.adapter);
-		expect(sourcesOf(db, 'Copper Valley')).toEqual([{ year: 2015, sources: ['Apple TV', 'Server'] }]);
+		expect(await sourcesOf(db, 'Copper Valley')).toEqual([{ year: 2015, sources: ['Apple TV', 'Server'] }]);
 	});
 });
 

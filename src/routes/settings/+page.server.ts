@@ -1,10 +1,9 @@
 import { fail } from '@sveltejs/kit';
 import { createAdapter, supportedSourceTypes } from '#lib/server/adapters/index.ts';
-import { config } from '#lib/server/config.ts';
-import { getDb } from '#lib/server/db.ts';
-import { isRefreshingAvailability, isSyncing, runAvailabilityRefresh, runSync } from '#lib/server/jobs.ts';
-import { PosterCache } from '#lib/server/posters.ts';
 import { parseCollection } from '#lib/server/adapters/collection.ts';
+import { config } from '#lib/server/config.ts';
+import { get, getDb } from '#lib/server/db.ts';
+import { isRefreshingAvailability, isSyncing, runAvailabilityRefresh, runSync } from '#lib/server/jobs.ts';
 import {
 	createSource,
 	deleteSource,
@@ -19,6 +18,9 @@ import { parseCollectionText, parseSourceForm } from '#lib/server/validation.ts'
 import { STREAMING_SERVICES, type StreamingServiceId } from '#lib/types.ts';
 import type { Actions, PageServerLoad } from './$types';
 
+/** Leave room under the function time limit to send the response. */
+const REFRESH_BUDGET_MS = 40_000;
+
 function types() {
 	return supportedSourceTypes(config.enableMockSources);
 }
@@ -31,26 +33,30 @@ async function sourceIdFrom(request: Request): Promise<number> {
 	return Number((await request.formData()).get('id'));
 }
 
-export const load: PageServerLoad = () => {
-	const db = getDb();
-	const checked = db
-		.prepare('SELECT COUNT(*) AS n FROM availability_checks WHERE region = ?')
-		.get(config.streamingRegion) as {
-		n: number;
-	};
+export const load: PageServerLoad = async () => {
+	const db = await getDb();
+	const [sources, syncing, enabled, refreshing, checked] = await Promise.all([
+		listSources(db),
+		isSyncing(),
+		getEnabledServices(db),
+		isRefreshingAvailability(),
+		get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM availability_checks WHERE region = ?', [config.streamingRegion])
+	]);
 	return {
-		sources: listSources(db).map((source) => ({
-			...source,
-			syncing: isSyncing(source.id),
-			collection: source.type === 'collection' ? getCollection(db, source.id) : null
-		})),
+		sources: await Promise.all(
+			sources.map(async (source) => ({
+				...source,
+				syncing,
+				collection: source.type === 'collection' ? await getCollection(db, source.id) : null
+			}))
+		),
 		types: types(),
 		streaming: {
-			enabled: getEnabledServices(db),
+			enabled,
 			region: config.streamingRegion,
 			configured: Boolean(config.tmdbToken),
-			refreshing: isRefreshingAvailability(),
-			checked: checked.n
+			refreshing,
+			checked: Number(checked?.n ?? 0)
 		}
 	};
 };
@@ -76,7 +82,7 @@ export const actions: Actions = {
 	add: async ({ request }) => {
 		const parsed = parseSourceForm(await request.formData(), types());
 		if (!parsed.ok) return fail(400, { add: { error: parsed.error } });
-		const id = createSource(getDb(), parsed.value);
+		const id = await createSource(await getDb(), parsed.value);
 		if (parsed.value.type === 'collection') {
 			const result = await runSync(id).catch(() => null);
 			if (result)
@@ -86,7 +92,7 @@ export const actions: Actions = {
 	},
 	test: async ({ request }) => {
 		const id = await sourceIdFrom(request);
-		const source = getSourceConfig(getDb(), id);
+		const source = await getSourceConfig(await getDb(), id);
 		if (!source) return fail(404, { row: { id, error: 'Source not found' } });
 		try {
 			await createAdapter(source).testConnection();
@@ -111,17 +117,17 @@ export const actions: Actions = {
 	},
 	toggle: async ({ request }) => {
 		const data = await request.formData();
-		setSourceEnabled(getDb(), Number(data.get('id')), data.get('enabled') === 'true');
+		await setSourceEnabled(await getDb(), Number(data.get('id')), data.get('enabled') === 'true');
 	},
 	updateCollection: async ({ request }) => {
 		const data = await request.formData();
 		const id = Number(data.get('id'));
-		const db = getDb();
-		if (getSourceConfig(db, id)?.type !== 'collection')
+		const db = await getDb();
+		if ((await getSourceConfig(db, id))?.type !== 'collection')
 			return fail(404, { row: { id, error: 'Collection not found' } });
 		const parsed = parseCollectionText(data.get('collection'));
 		if (!parsed.ok) return fail(400, { row: { id, error: parsed.error } });
-		setCollection(db, id, parsed.value);
+		await setCollection(db, id, parsed.value);
 		try {
 			const result = await runSync(id);
 			return {
@@ -134,24 +140,27 @@ export const actions: Actions = {
 	saveStreaming: async ({ request }) => {
 		const known = STREAMING_SERVICES.map((service) => service.id) as string[];
 		const chosen = (await request.formData()).getAll('service').map(String);
-		setEnabledServices(
-			getDb(),
+		await setEnabledServices(
+			await getDb(),
 			chosen.filter((id): id is StreamingServiceId => known.includes(id))
 		);
 		return { streaming: { notice: 'Saved.' } };
 	},
 	refreshStreaming: async () => {
-		const result = await runAvailabilityRefresh();
-		if (!result) return fail(400, { streaming: { error: 'Set TMDB_READ_TOKEN to look up streaming availability.' } });
+		if (!config.tmdbToken)
+			return fail(400, { streaming: { error: 'Set TMDB_READ_TOKEN to look up streaming availability.' } });
+		const result = await runAvailabilityRefresh(Date.now() + REFRESH_BUDGET_MS);
+		if (!result) return fail(409, { streaming: { error: 'A check is already running. Try again shortly.' } });
 		if (result.error) return fail(400, { streaming: { error: result.error } });
 		const failed = result.failed ? ` ${result.failed} lookups failed.` : '';
+		const remaining = result.remaining ? ` ${result.remaining} left for the next run.` : '';
 		return {
-			streaming: { notice: `Checked ${result.checked} ${result.checked === 1 ? 'title' : 'titles'}.${failed}` }
+			streaming: {
+				notice: `Checked ${result.checked} ${result.checked === 1 ? 'title' : 'titles'}.${failed}${remaining}`
+			}
 		};
 	},
 	remove: async ({ request }) => {
-		const db = getDb();
-		deleteSource(db, await sourceIdFrom(request));
-		new PosterCache(db).pruneOrphans();
+		await deleteSource(await getDb(), await sourceIdFrom(request));
 	}
 };

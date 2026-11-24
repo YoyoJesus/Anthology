@@ -5,11 +5,11 @@ import { deriveKey } from '../src/lib/server/crypto';
 
 export const testKey = deriveKey('test-secret');
 
-export function memoryDb(): DB {
+export function memoryDb(): Promise<DB> {
 	return openDb(':memory:');
 }
 
-export function addMockSource(db: DB, name: string, dataset: string) {
-	const id = createSource(db, { type: 'mock', name, baseUrl: 'mock://local', token: dataset }, testKey);
+export async function addMockSource(db: DB, name: string, dataset: string) {
+	const id = await createSource(db, { type: 'mock', name, baseUrl: 'mock://local', token: dataset }, testKey);
 	return { id, adapter: createMockAdapter({ id, type: 'mock', name, baseUrl: 'mock://local', token: dataset }) };
 }

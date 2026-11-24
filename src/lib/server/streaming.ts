@@ -1,6 +1,5 @@
 import { STREAMING_SERVICES, type StreamingServiceId } from '#lib/types.ts';
-import type { DB } from './db';
-import { getSetting, setSetting } from './db';
+import { all, get, getSetting, setSetting, type DB } from './db';
 import { parseIds } from './matcher';
 
 const TMDB_API = 'https://api.themoviedb.org/3';
@@ -56,45 +55,47 @@ export async function fetchWatchProviders(
 	return (await res.json()) as TmdbWatchProviders;
 }
 
-export function getEnabledServices(db: DB): StreamingServiceId[] {
+export async function getEnabledServices(db: DB): Promise<StreamingServiceId[]> {
 	const known = STREAMING_SERVICES.map((s) => s.id) as string[];
 	try {
-		const value: unknown = JSON.parse(getSetting(db, 'streaming_services') ?? '[]');
+		const value: unknown = JSON.parse((await getSetting(db, 'streaming_services')) ?? '[]');
 		return Array.isArray(value) ? (value.filter((v) => known.includes(v)) as StreamingServiceId[]) : [];
 	} catch {
 		return [];
 	}
 }
 
-export function setEnabledServices(db: DB, services: StreamingServiceId[]): void {
-	setSetting(db, 'streaming_services', JSON.stringify(services));
+export async function setEnabledServices(db: DB, services: StreamingServiceId[]): Promise<void> {
+	await setSetting(db, 'streaming_services', JSON.stringify(services));
 }
 
 /** Enabled services each work is on. Services you have not ticked are hidden. */
-export function availabilityFor(db: DB, workIds: number[]): Map<number, StreamingServiceId[]> {
+export async function availabilityFor(db: DB, workIds: number[]): Promise<Map<number, StreamingServiceId[]>> {
 	const map = new Map<number, StreamingServiceId[]>();
-	const enabled = getEnabledServices(db);
+	const enabled = await getEnabledServices(db);
 	if (!workIds.length || !enabled.length) return map;
-	const rows = db
-		.prepare(
-			`SELECT work_id, service FROM work_availability
-			WHERE work_id IN (${workIds.map(() => '?').join(',')}) AND service IN (${enabled.map(() => '?').join(',')})`
-		)
-		.all(...workIds, ...enabled) as { work_id: number; service: StreamingServiceId }[];
+	const rows = await all<{ work_id: number; service: StreamingServiceId }>(
+		db,
+		`SELECT work_id, service FROM work_availability
+		WHERE work_id IN (${workIds.map(() => '?').join(',')}) AND service IN (${enabled.map(() => '?').join(',')})`,
+		[...workIds, ...enabled]
+	);
 	const order = STREAMING_SERVICES.map((s) => s.id) as StreamingServiceId[];
 	for (const row of rows) {
-		const list = map.get(row.work_id) ?? [];
+		const workId = Number(row.work_id);
+		const list = map.get(workId) ?? [];
 		list.push(row.service);
 		list.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-		map.set(row.work_id, list);
+		map.set(workId, list);
 	}
 	return map;
 }
 
-export function availabilityLink(db: DB, workId: number): string | null {
-	const row = db.prepare('SELECT link FROM availability_checks WHERE work_id = ?').get(workId) as
-		{ link: string | null } | undefined;
-	return row?.link ?? null;
+export async function availabilityLink(db: DB, workId: number): Promise<string | null> {
+	return (
+		(await get<{ link: string | null }>(db, 'SELECT link FROM availability_checks WHERE work_id = ?', [workId]))
+			?.link ?? null
+	);
 }
 
 export interface RefreshOptions {
@@ -103,6 +104,8 @@ export interface RefreshOptions {
 	force?: boolean;
 	now?: number;
 	concurrency?: number;
+	/** Stop starting new lookups after this time (ms since epoch). The rest are picked up next run. */
+	deadline?: number;
 	fetchProviders?: typeof fetchWatchProviders;
 }
 
@@ -110,6 +113,7 @@ export interface RefreshResult {
 	checked: number;
 	skipped: number;
 	failed: number;
+	remaining: number;
 	error: string | null;
 }
 
@@ -117,47 +121,58 @@ export interface RefreshResult {
 export async function refreshAvailability(db: DB, options: RefreshOptions): Promise<RefreshResult> {
 	const now = options.now ?? Date.now();
 	const fetchProviders = options.fetchProviders ?? fetchWatchProviders;
-	const works = db
-		.prepare(
-			`SELECT w.id, w.kind, w.external_ids_json, c.region, c.checked_at FROM works w
-			LEFT JOIN availability_checks c ON c.work_id = w.id WHERE w.kind IN ('movie', 'show')`
-		)
-		.all() as {
+	const works = await all<{
 		id: number;
 		kind: 'movie' | 'show';
 		external_ids_json: string;
 		region: string | null;
 		checked_at: number | null;
-	}[];
+	}>(
+		db,
+		`SELECT w.id, w.kind, w.external_ids_json, c.region, c.checked_at FROM works w
+		LEFT JOIN availability_checks c ON c.work_id = w.id WHERE w.kind IN ('movie', 'show')`
+	);
 
 	const queue: { id: number; kind: 'movie' | 'tv'; tmdbId: string }[] = [];
 	let skipped = 0;
 	for (const work of works) {
 		const tmdbId = parseIds(work.external_ids_json).tmdb;
-		const fresh = work.region === options.region && work.checked_at !== null && now - work.checked_at < MAX_AGE_MS;
+		const checkedAt = work.checked_at === null ? null : Number(work.checked_at);
+		const fresh = work.region === options.region && checkedAt !== null && now - checkedAt < MAX_AGE_MS;
 		if (!tmdbId) skipped++;
-		else if (options.force || !fresh) queue.push({ id: work.id, kind: work.kind === 'show' ? 'tv' : 'movie', tmdbId });
+		else if (options.force || !fresh)
+			queue.push({ id: Number(work.id), kind: work.kind === 'show' ? 'tv' : 'movie', tmdbId });
 	}
 
-	const save = db.transaction((workId: number, services: StreamingServiceId[], link: string | null) => {
-		db.prepare('DELETE FROM work_availability WHERE work_id = ?').run(workId);
-		const insert = db.prepare('INSERT INTO work_availability (work_id, service) VALUES (?, ?)');
-		for (const service of services) insert.run(workId, service);
-		db.prepare(
-			`INSERT INTO availability_checks (work_id, region, link, checked_at) VALUES (?, ?, ?, ?)
-			ON CONFLICT(work_id) DO UPDATE SET region = excluded.region, link = excluded.link, checked_at = excluded.checked_at`
-		).run(workId, options.region, link, now);
-	});
+	const save = (workId: number, services: StreamingServiceId[], link: string | null) =>
+		db.batch(
+			[
+				{ sql: 'DELETE FROM work_availability WHERE work_id = ?', args: [workId] },
+				...services.map((service) => ({
+					sql: 'INSERT INTO work_availability (work_id, service) VALUES (?, ?)',
+					args: [workId, service]
+				})),
+				{
+					sql: `INSERT INTO availability_checks (work_id, region, link, checked_at) VALUES (?, ?, ?, ?)
+					ON CONFLICT(work_id) DO UPDATE SET region = excluded.region, link = excluded.link, checked_at = excluded.checked_at`,
+					args: [workId, options.region, link, now]
+				}
+			],
+			'write'
+		);
 
 	let checked = 0;
 	let failed = 0;
 	let error: string | null = null;
+	const outOfTime = () => options.deadline !== undefined && Date.now() >= options.deadline;
 	const worker = async () => {
-		for (let next = queue.shift(); next && !error; next = queue.shift()) {
+		while (!error && !outOfTime()) {
+			const next = queue.shift();
+			if (!next) return;
 			try {
 				const payload = await fetchProviders(next.kind, next.tmdbId, options.token);
 				const { services, link } = servicesFromProviders(payload, options.region);
-				save(next.id, services, link);
+				await save(next.id, services, link);
 				checked++;
 			} catch (err) {
 				failed++;
@@ -166,5 +181,5 @@ export async function refreshAvailability(db: DB, options: RefreshOptions): Prom
 		}
 	};
 	await Promise.all(Array.from({ length: options.concurrency ?? 4 }, worker));
-	return { checked, skipped, failed, error };
+	return { checked, skipped, failed, remaining: queue.length, error };
 }

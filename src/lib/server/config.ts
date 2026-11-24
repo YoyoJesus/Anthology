@@ -6,26 +6,33 @@ function positiveNumber(value: string | undefined, fallback: number): number {
 }
 
 export interface Config {
+	databaseUrl: string;
+	databaseAuthToken: string | undefined;
 	dataDir: string;
 	adminPassword: string | undefined;
 	secretKey: string | undefined;
-	posterCacheMaxBytes: number;
+	cronSecret: string | undefined;
 	syncIntervalMinutes: number;
 	enableMockSources: boolean;
 	tmdbToken: string | undefined;
 	streamingRegion: string;
+	onVercel: boolean;
 }
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
+	const dataDir = path.resolve(env.DATA_DIR || './data');
 	return {
-		dataDir: path.resolve(env.DATA_DIR || './data'),
+		databaseUrl: env.DATABASE_URL || `file:${path.join(dataDir, 'anthology.db')}`,
+		databaseAuthToken: env.DATABASE_AUTH_TOKEN || undefined,
+		dataDir,
 		adminPassword: env.ADMIN_PASSWORD || undefined,
 		secretKey: env.SECRET_KEY || undefined,
-		posterCacheMaxBytes: positiveNumber(env.POSTER_CACHE_MAX_MB, 500) * 1024 * 1024,
+		cronSecret: env.CRON_SECRET || undefined,
 		syncIntervalMinutes: positiveNumber(env.SYNC_INTERVAL_MINUTES, 360),
 		enableMockSources: env.ENABLE_MOCK_SOURCES === 'true' || env.NODE_ENV !== 'production',
 		tmdbToken: env.TMDB_READ_TOKEN || undefined,
-		streamingRegion: /^[A-Za-z]{2}$/.test(env.STREAMING_REGION ?? '') ? env.STREAMING_REGION!.toUpperCase() : 'US'
+		streamingRegion: /^[A-Za-z]{2}$/.test(env.STREAMING_REGION ?? '') ? env.STREAMING_REGION!.toUpperCase() : 'US',
+		onVercel: Boolean(env.VERCEL)
 	};
 }
 

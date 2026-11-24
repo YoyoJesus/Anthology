@@ -1,9 +1,11 @@
-import Database from 'better-sqlite3';
+import type { Client, InArgs, InStatement } from '@libsql/client';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from './config';
 
-export type DB = Database.Database;
+export type DB = Client;
+export type Row = Record<string, unknown>;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS settings (
@@ -85,14 +87,6 @@ CREATE TABLE IF NOT EXISTS overrides (
 	work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS poster_cache (
-	item_id INTEGER PRIMARY KEY,
-	file TEXT NOT NULL,
-	content_type TEXT NOT NULL,
-	bytes INTEGER NOT NULL,
-	last_access INTEGER NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS work_availability (
 	work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
 	service TEXT NOT NULL,
@@ -106,32 +100,93 @@ CREATE TABLE IF NOT EXISTS availability_checks (
 	checked_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS locks (
+	name TEXT PRIMARY KEY,
+	expires_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS login_failures (
+	client TEXT PRIMARY KEY,
+	count INTEGER NOT NULL,
+	since INTEGER NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS works_fts USING fts5 (title, tokenize = 'unicode61 remove_diacritics 2');
 `;
 
-export function openDb(file: string): DB {
-	if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
-	const db = new Database(file);
-	db.pragma('journal_mode = WAL');
-	db.pragma('foreign_keys = ON');
-	db.exec(SCHEMA);
+export async function openDb(url: string, authToken?: string): Promise<DB> {
+	if (url.startsWith('file:') && !url.includes(':memory:')) {
+		const file = url.startsWith('file://') ? fileURLToPath(url) : url.slice('file:'.length);
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+	}
+	// Local files need the native client. Remote databases use the HTTP client, which has no native dependency.
+	const local = url === ':memory:' || url.startsWith('file:');
+	const { createClient } = local ? await import('@libsql/client') : await import('@libsql/client/web');
+	const db = createClient({ url, authToken });
+	await db.execute('PRAGMA foreign_keys = ON');
+	await db.executeMultiple(SCHEMA);
 	return db;
 }
 
-let instance: DB | undefined;
+let instance: Promise<DB> | undefined;
 
-export function getDb(): DB {
-	instance ??= openDb(path.join(config.dataDir, 'anthology.db'));
+export function getDb(): Promise<DB> {
+	instance ??= openDb(config.databaseUrl, config.databaseAuthToken).catch((err) => {
+		instance = undefined;
+		throw err;
+	});
 	return instance;
 }
 
-export function getSetting(db: DB, key: string): string | undefined {
-	const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
-	return row?.value;
+export async function all<T = Row>(db: DB, sql: string, args: InArgs = []): Promise<T[]> {
+	return (await db.execute({ sql, args })).rows as unknown as T[];
 }
 
-export function setSetting(db: DB, key: string, value: string): void {
-	db.prepare(
-		'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
-	).run(key, value);
+export async function get<T = Row>(db: DB, sql: string, args: InArgs = []): Promise<T | undefined> {
+	return (await all<T>(db, sql, args))[0];
+}
+
+export async function run(
+	db: DB,
+	sql: string,
+	args: InArgs = []
+): Promise<{ lastInsertRowid: number; changes: number }> {
+	const res = await db.execute({ sql, args });
+	return { lastInsertRowid: Number(res.lastInsertRowid ?? 0), changes: res.rowsAffected };
+}
+
+/** Runs statements atomically, in chunks so very large syncs stay within request limits. */
+export async function writeBatch(db: DB, statements: InStatement[], chunk = 1000): Promise<void> {
+	for (let i = 0; i < statements.length; i += chunk) await db.batch(statements.slice(i, i + chunk), 'write');
+}
+
+export async function getSetting(db: DB, key: string): Promise<string | undefined> {
+	return (await get<{ value: string }>(db, 'SELECT value FROM settings WHERE key = ?', [key]))?.value;
+}
+
+export async function setSetting(db: DB, key: string, value: string): Promise<void> {
+	await run(
+		db,
+		'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+		[key, value]
+	);
+}
+
+/** A lease that survives across serverless instances. Returns false if someone else holds it. */
+export async function acquireLock(db: DB, name: string, ttlMs: number, now = Date.now()): Promise<boolean> {
+	const res = await run(
+		db,
+		`INSERT INTO locks (name, expires_at) VALUES (?, ?)
+		ON CONFLICT(name) DO UPDATE SET expires_at = excluded.expires_at WHERE locks.expires_at < ?`,
+		[name, now + ttlMs, now]
+	);
+	return res.changes > 0;
+}
+
+export async function releaseLock(db: DB, name: string): Promise<void> {
+	await run(db, 'DELETE FROM locks WHERE name = ?', [name]);
+}
+
+export async function isLocked(db: DB, name: string, now = Date.now()): Promise<boolean> {
+	return Boolean(await get(db, 'SELECT 1 FROM locks WHERE name = ? AND expires_at >= ?', [name, now]));
 }

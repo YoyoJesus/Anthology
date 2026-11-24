@@ -21,16 +21,16 @@ export const load: PageServerLoad = ({ locals, url }) => {
 export const actions: Actions = {
 	default: async ({ request, cookies, url, getClientAddress }) => {
 		const client = getClientAddress();
-		if (isRateLimited(client)) return fail(429, { error: 'Too many attempts. Try again in a few minutes.' });
+		const db = await getDb();
+		if (await isRateLimited(db, client)) return fail(429, { error: 'Too many attempts. Try again in a few minutes.' });
 
 		const password = String((await request.formData()).get('password') ?? '');
-		const db = getDb();
-		if (!checkPassword(db, password)) {
-			recordFailure(client);
+		if (!(await checkPassword(db, password))) {
+			await recordFailure(db, client);
 			return fail(400, { error: 'That password is not correct.' });
 		}
-		clearFailures(client);
-		const { token, expires } = createSession(db);
+		await clearFailures(db, client);
+		const { token, expires } = await createSession(db);
 		cookies.set(SESSION_COOKIE, token, { path: '/', httpOnly: true, sameSite: 'lax', expires });
 		redirect(303, safeNext(url.searchParams.get('next')));
 	}

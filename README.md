@@ -15,6 +15,7 @@ A self-hosted catalogue that pulls the libraries of your media servers into one 
 - Poster cache on disk with a size cap, falling back to the source when a poster is not cached
 - Single admin password, set at first run or with `ADMIN_PASSWORD`
 - Source credentials encrypted at rest with `SECRET_KEY`
+- Digital collections: paste a list of titles you own on a store such as Apple TV, and they join the library like any other source
 - Optional streaming availability for Netflix, Prime Video, Hulu, Disney+ and Apple TV+, looked up through TMDB for titles already in your library
 
 See [PROJECT.md](PROJECT.md) for the full plan, including music, manual merge and split, and the stretch adapters.
@@ -54,6 +55,18 @@ Back up the data volume. It holds the database and the generated secret key if y
 ### Connecting to your servers
 
 Point each source at an address the container can reach, for example `http://192.168.1.10:8096` for Jellyfin or `http://192.168.1.10:32400` for Plex. Jellyfin needs an API key from its dashboard. Plex needs an `X-Plex-Token`.
+
+### Digital collections
+
+Store purchases (Apple TV, Amazon, Google and similar) have no API Anthology can read, so add them as a **Digital collection** source and paste your titles, one per line:
+
+```text
+The Glass Orchard (2019)
+Northbound
+TV: Low Tide Club (2018)
+```
+
+Years are optional but make matching more reliable. A title without a year joins an existing title only when exactly one matches. Use **Edit list** on the source to change it later.
 
 ### Streaming availability
 

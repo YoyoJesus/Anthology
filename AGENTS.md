@@ -5,6 +5,7 @@ Anthology is a self-hosted SvelteKit app that merges the libraries of several me
 ## Layout
 
 - `src/lib/server/adapters/`: one file per source type, each implementing `SourceAdapter` from `types.ts`. Register new adapters in `adapters/index.ts`. Core code must not know about specific sources.
+- `src/lib/server/adapters/collection.ts`: the digital collection source. Its title list is stored in `collection_lists`, not in the encrypted credentials, and its items have an empty `link_url`.
 - `src/lib/server/sync.ts`: full sync of one source and work resolution (override, then external IDs, then title + year).
 - `src/lib/server/matcher.ts`: pure title normalization and ID helpers.
 - `src/lib/server/db.ts`: SQLite schema (better-sqlite3, FTS5 for search). Schema changes go here.

@@ -16,7 +16,7 @@ A catalogue that pulls the libraries of your media servers into one searchable c
 - Single admin password, set at first run or with `ADMIN_PASSWORD`
 - Source credentials encrypted at rest with `SECRET_KEY`
 - Digital collections: paste a list of titles you own on a store such as Apple TV, and they join the library like any other source
-- Optional streaming availability for Netflix, Prime Video, Hulu, Disney+ and Apple TV+, looked up through TMDB for titles already in your library
+- Optional streaming catalogues for Netflix, Prime Video, Hulu, Disney+ and Apple TV+: everything each service you tick offers in your region joins the library, and titles you own are marked when a service has them
 
 See [PROJECT.md](PROJECT.md) for the full plan, including music, manual merge and split, and the stretch adapters.
 
@@ -54,16 +54,16 @@ Anthology runs on Vercel with a [Turso](https://turso.tech) database (hosted lib
 | `SECRET_KEY`            | Yes      | Encrypts source credentials. Changing it makes saved credentials unreadable |
 | `CRON_SECRET`           | Yes      | Protects `/api/cron`. Vercel sends it with its scheduled requests           |
 | `SYNC_INTERVAL_MINUTES` | No       | Minimum time between automatic syncs of a source. Default `360`             |
-| `TMDB_READ_TOKEN`       | No       | TMDB read access token. Turns on streaming availability lookups             |
+| `TMDB_READ_TOKEN`       | No       | TMDB read access token. Turns on streaming catalogues and lookups           |
 | `STREAMING_REGION`      | No       | Country used for streaming availability. Default `US`                       |
 | `ENABLE_MOCK_SOURCES`   | No       | `true` allows the sample-data source type in production                     |
 
-The cron job in `vercel.json` runs once a day at 06:00 UTC. It syncs sources that are due and checks streaming availability, stopping new work before the 60 second function limit. Anything left over is picked up by the next run or the buttons in Settings.
+The cron jobs in `vercel.json` run three times a day (06:00, 14:00 and 22:00 UTC). Each run syncs the sources that are due, least recently synced first, then checks streaming availability for titles you own. It stops starting new work after four minutes, inside the 300 second function limit. Anything left over is picked up by the next run or the buttons in Settings.
 
 Limits on Vercel:
 
 - Vercel cannot reach servers on your home network (addresses like `192.168.x.x`). Plex and Jellyfin sources only work if they have a public address, for example through a tunnel. Digital collections, streaming availability and sample data work as is.
-- A single sync has to finish within the 60 second function limit.
+- A single sync has to finish within the 300 second function limit.
 
 ## Run as a Node server
 
@@ -83,7 +83,7 @@ Years are optional but make matching more reliable. A title without a year joins
 
 ### Streaming availability
 
-Create a free TMDB account, copy the API read access token from its API settings, and set it as `TMDB_READ_TOKEN`. Then tick the services you subscribe to under Settings. Availability is checked by the scheduled job or the **Check availability** button, and rechecked weekly. Titles without a TMDB ID, such as digital collection entries, are matched by exact title and year. It reflects what each service offers in your region, not what is in your account. Streaming data comes from JustWatch via TMDB.
+Create a free TMDB account, copy the API read access token from its API settings, and set it as `TMDB_READ_TOKEN`. Then tick the services you subscribe to under Settings and save. Each ticked service becomes a source holding its subscription catalogue for your region, imported from TMDB and refreshed by the scheduled job. Unticking a service removes its catalogue. Titles you own are marked when a service has them: either they merge with a catalogue title, or the **Check availability** button looks them up (rechecked weekly). Titles without a TMDB ID, such as digital collection entries, are matched by exact title and year. All of this reflects what each service offers in your region, not what is in your account. Streaming data comes from JustWatch via TMDB.
 
 ## Development
 

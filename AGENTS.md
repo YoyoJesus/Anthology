@@ -8,6 +8,7 @@ Anthology is a self-hosted SvelteKit app that merges the libraries of several me
 - `src/lib/server/sync.ts`: full sync of one source and work resolution (override, then external IDs, then title + year).
 - `src/lib/server/matcher.ts`: pure title normalization and ID helpers.
 - `src/lib/server/db.ts`: SQLite schema (better-sqlite3, FTS5 for search). Schema changes go here.
+- `src/lib/server/streaming.ts`: subscription availability from TMDB watch providers (data from JustWatch). Not a source: it enriches existing works by TMDB ID. Keep the JustWatch and TMDB attribution visible wherever this data is shown.
 - `src/lib/server/posters.ts`: on-disk poster cache with an LRU size cap.
 - `src/lib/server/auth.ts`, `crypto.ts`: admin password, sessions, credential encryption.
 - `src/routes/`: pages and form actions. `hooks.server.ts` enforces login on every route except `/login` and `/setup`.

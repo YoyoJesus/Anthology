@@ -15,6 +15,7 @@ A self-hosted catalogue that pulls the libraries of your media servers into one 
 - Poster cache on disk with a size cap, falling back to the source when a poster is not cached
 - Single admin password, set at first run or with `ADMIN_PASSWORD`
 - Source credentials encrypted at rest with `SECRET_KEY`
+- Optional streaming availability for Netflix, Prime Video, Hulu, Disney+ and Apple TV+, looked up through TMDB for titles already in your library
 
 See [PROJECT.md](PROJECT.md) for the full plan, including music, manual merge and split, and the stretch adapters.
 
@@ -44,6 +45,8 @@ docker compose up -d --build
 | `DATA_DIR`              | `./data` (`/data` image) | SQLite database, poster cache and generated key                             |
 | `POSTER_CACHE_MAX_MB`   | `500`                    | Poster cache size cap                                                       |
 | `SYNC_INTERVAL_MINUTES` | `360`                    | How often enabled sources sync automatically                                |
+| `TMDB_READ_TOKEN`       | none                     | TMDB read access token. Turns on streaming availability lookups             |
+| `STREAMING_REGION`      | `US`                     | Country used for streaming availability                                     |
 | `ENABLE_MOCK_SOURCES`   | `false` in production    | Allow the sample-data source type                                           |
 
 Back up the data volume. It holds the database and the generated secret key if you did not set one.
@@ -51,6 +54,10 @@ Back up the data volume. It holds the database and the generated secret key if y
 ### Connecting to your servers
 
 Point each source at an address the container can reach, for example `http://192.168.1.10:8096` for Jellyfin or `http://192.168.1.10:32400` for Plex. Jellyfin needs an API key from its dashboard. Plex needs an `X-Plex-Token`.
+
+### Streaming availability
+
+Create a free TMDB account, copy the API read access token from its API settings, and set it as `TMDB_READ_TOKEN`. Then tick the services you subscribe to under Settings. Availability is checked after each sync and refreshed weekly, for titles with a TMDB ID. It reflects what each service offers in your region, not what is in your account. Streaming data comes from JustWatch via TMDB.
 
 ## Development
 

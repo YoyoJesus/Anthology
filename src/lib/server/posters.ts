@@ -5,7 +5,7 @@ const MAX_POSTER_BYTES = 10 * 1024 * 1024;
 
 /** Fetch artwork through the source's adapter so credentials stay on the server. Only images are passed on. */
 export async function loadPoster(
-	adapter: SourceAdapter,
+	adapter: Pick<SourceAdapter, 'fetchPoster'>,
 	posterRef: string
 ): Promise<{ body: ArrayBuffer; contentType: string }> {
 	const res = await adapter.fetchPoster(posterRef);

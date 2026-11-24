@@ -38,7 +38,8 @@ export interface WorkCard {
 	title: string;
 	year: number | null;
 	kind: MediaKind;
-	posterItemId: number | null;
+	/** Same-origin poster URL, or null to show the title instead. */
+	posterUrl: string | null;
 	sources: WorkSource[];
 	streaming: StreamingServiceId[];
 }

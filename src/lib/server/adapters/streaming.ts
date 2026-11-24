@@ -11,6 +11,14 @@ const FIRST_YEAR = 1900;
 
 export const STREAMING_URL_PREFIX = 'streaming://';
 
+/** TMDB image paths look like "/abc123.jpg". Anything else is refused so the proxy cannot be pointed elsewhere. */
+export const TMDB_POSTER_PATH = /^\/[\w-]+\.(jpg|png)$/;
+
+export function fetchTmdbPoster(path: string, fetchFn: typeof fetch = globalThis.fetch): Promise<Response> {
+	if (!TMDB_POSTER_PATH.test(path)) return Promise.reject(new Error('Invalid poster reference'));
+	return fetchFn(`${TMDB_IMAGES}${path}`, { signal: AbortSignal.timeout(15_000) });
+}
+
 /**
  * Provider names as TMDB lists them, lowercased. Plans with ads count as the same service. Paid add-ons ("... Amazon
  * Channel"), stores ("Amazon Video") and Amazon's free tier ("Amazon Prime Video Free with Ads") do not.
@@ -165,7 +173,7 @@ export function createStreamingAdapter(
 					year: year || null,
 					kind: library.kind as MediaKind,
 					externalIds: { tmdb: String(result.id) },
-					posterRef: result.poster_path && /^\/[\w-]+\.(jpg|png)$/.test(result.poster_path) ? result.poster_path : null,
+					posterRef: result.poster_path && TMDB_POSTER_PATH.test(result.poster_path) ? result.poster_path : null,
 					addedAt: null,
 					updatedAt: null
 				};
@@ -176,9 +184,8 @@ export function createStreamingAdapter(
 			const kind = item.kind === 'show' ? 'tv' : 'movie';
 			return `https://www.themoviedb.org/${kind}/${encodeURIComponent(item.remoteId)}/watch?locale=${deps.region}`;
 		},
-		async fetchPoster(posterRef) {
-			if (!/^\/[\w-]+\.(jpg|png)$/.test(posterRef)) throw new Error('Invalid poster reference');
-			return deps.fetch(`${TMDB_IMAGES}${posterRef}`, { signal: AbortSignal.timeout(15_000) });
+		fetchPoster(posterRef) {
+			return fetchTmdbPoster(posterRef, deps.fetch);
 		}
 	};
 }

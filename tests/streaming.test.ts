@@ -158,7 +158,9 @@ describe('pickSearchResult', () => {
 describe('refreshAvailability title search', () => {
 	it('finds missing TMDB IDs by title, stores them and skips titles with no match', async () => {
 		const db = await syncedDb();
-		const search = vi.fn(async (_kind: 'movie' | 'tv', title: string) => (title === 'Northbound' ? '777' : null));
+		const search = vi.fn(async (_kind: 'movie' | 'tv', title: string) =>
+			title === 'Northbound' ? { id: '777', posterPath: '/p777.jpg' } : null
+		);
 		const lookups: string[] = [];
 		const fetchProviders = vi.fn(async (_kind: 'movie' | 'tv', id: string) => {
 			lookups.push(id);
@@ -179,6 +181,13 @@ describe('refreshAvailability title search', () => {
 			"SELECT external_ids_json FROM works WHERE title = 'Northbound'"
 		);
 		expect(JSON.parse(northbound[0].external_ids_json).tmdb).toBe('777');
+		const stored = await all<{ path: string }>(
+			db,
+			"SELECT p.path FROM work_posters p JOIN works w ON w.id = p.work_id WHERE w.title = 'Northbound'"
+		);
+		expect(stored.map((r) => r.path)).toEqual(['/p777.jpg']);
+		// The source's own artwork still wins over the TMDB poster.
+		expect((await browseWorks(db, { q: 'Northbound' })).works[0].posterUrl).toMatch(/^\/posters\/\d+$/);
 		const again = await refreshAvailability(db, { token: 't', region: 'US', fetchProviders, searchTitle: search });
 		expect(again.checked + again.skipped).toBe(0);
 	});

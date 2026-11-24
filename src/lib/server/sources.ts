@@ -130,6 +130,7 @@ export const ORPHAN_CLEANUP = [
 	'DELETE FROM work_external_ids WHERE work_id NOT IN (SELECT id FROM works)',
 	'DELETE FROM work_availability WHERE work_id NOT IN (SELECT id FROM works)',
 	'DELETE FROM availability_checks WHERE work_id NOT IN (SELECT id FROM works)',
+	'DELETE FROM work_posters WHERE work_id NOT IN (SELECT id FROM works)',
 	// Work titles never change after insert, so the search index only needs rows added and removed.
 	'DELETE FROM works_fts WHERE rowid NOT IN (SELECT id FROM works)',
 	'INSERT INTO works_fts (rowid, title) SELECT id, title FROM works WHERE id NOT IN (SELECT rowid FROM works_fts)'

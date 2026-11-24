@@ -93,6 +93,12 @@ CREATE TABLE IF NOT EXISTS work_availability (
 	PRIMARY KEY (work_id, service)
 );
 
+-- TMDB poster paths for works that came without artwork, such as digital collection titles.
+CREATE TABLE IF NOT EXISTS work_posters (
+	work_id INTEGER PRIMARY KEY REFERENCES works(id) ON DELETE CASCADE,
+	path TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS availability_checks (
 	work_id INTEGER PRIMARY KEY REFERENCES works(id) ON DELETE CASCADE,
 	region TEXT NOT NULL,

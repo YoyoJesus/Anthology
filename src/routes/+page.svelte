@@ -86,7 +86,7 @@
 		{#each data.works as work (work.id)}
 			<li>
 				<a href="/works/{work.id}" class="group block">
-					<Poster itemId={work.posterItemId} title={work.title} class="ring-accent transition group-hover:ring-2" />
+					<Poster src={work.posterUrl} title={work.title} class="ring-accent transition group-hover:ring-2" />
 					<p class="mt-2 truncate text-sm font-medium" title={work.title}>{work.title}</p>
 					<p class="text-xs text-faint">{work.year ?? 'Unknown year'} · {work.kind === 'show' ? 'Show' : 'Movie'}</p>
 					<div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">

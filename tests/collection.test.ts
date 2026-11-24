@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createCollectionAdapter, parseCollection } from '../src/lib/server/adapters/collection';
-import { createSource, getSourceConfig } from '../src/lib/server/sources';
+import { createSource, getSourceConfig, setCollection } from '../src/lib/server/sources';
+import { refreshAvailability } from '../src/lib/server/streaming';
 import { syncSource } from '../src/lib/server/sync';
 import { parseSourceForm } from '../src/lib/server/validation';
 import { browseWorks } from '../src/lib/server/works';
@@ -121,5 +122,49 @@ describe('collection form', () => {
 				collection: 'Harbor Lights (2021)'
 			}
 		});
+	});
+});
+
+describe('collection posters', () => {
+	it('fall back to the TMDB poster found by title search', async () => {
+		const db = await memoryDb();
+		const id = await createSource(db, { type: 'collection', name: 'Shelf', baseUrl: '', token: '' }, testKey);
+		await setCollection(db, id, 'Synthetic Shelf Film (2020)');
+		await syncSource(db, id, createCollectionAdapter((await getSourceConfig(db, id, testKey))!));
+		expect((await browseWorks(db, {})).works[0].posterUrl).toBeNull();
+		await refreshAvailability(db, {
+			token: 't',
+			region: 'US',
+			fetchProviders: async () => ({}),
+			searchTitle: async () => ({ id: '4242', posterPath: '/shelf.jpg' })
+		});
+		expect((await browseWorks(db, {})).works[0].posterUrl).toBe('/posters/tmdb/shelf.jpg');
+	});
+});
+
+describe('poster backfill', () => {
+	it('fetches posters for titles matched before posters were stored, once', async () => {
+		const db = await memoryDb();
+		const id = await createSource(db, { type: 'collection', name: 'Shelf', baseUrl: '', token: '' }, testKey);
+		await setCollection(db, id, 'Synthetic Shelf Film (2020)');
+		await syncSource(db, id, createCollectionAdapter((await getSourceConfig(db, id, testKey))!));
+		const options = {
+			token: 't',
+			region: 'US',
+			fetchProviders: async () => ({}),
+			searchTitle: async () => ({ id: '4242', posterPath: null })
+		};
+		await refreshAvailability(db, {
+			...options,
+			fetchPosterPath: async () => {
+				throw new Error('offline');
+			}
+		});
+		expect((await browseWorks(db, {})).works[0].posterUrl).toBeNull();
+		const posterPath = vi.fn(async () => '/late.jpg');
+		await refreshAvailability(db, { ...options, fetchPosterPath: posterPath });
+		await refreshAvailability(db, { ...options, fetchPosterPath: posterPath });
+		expect(posterPath).toHaveBeenCalledTimes(1);
+		expect((await browseWorks(db, {})).works[0].posterUrl).toBe('/posters/tmdb/late.jpg');
 	});
 });

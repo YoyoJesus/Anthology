@@ -29,6 +29,15 @@ interface WorkRow {
 	year: number | null;
 	kind: MediaKind;
 	canonical_poster: number | null;
+	tmdb_poster: string | null;
+}
+
+/** A source's own artwork first, then a TMDB poster found by title search. */
+const POSTER_COLUMNS = 'w.canonical_poster, (SELECT p.path FROM work_posters p WHERE p.work_id = w.id) AS tmdb_poster';
+
+function posterUrl(row: WorkRow): string | null {
+	if (row.canonical_poster !== null && row.canonical_poster !== undefined) return `/posters/${row.canonical_poster}`;
+	return row.tmdb_poster ? `/posters/tmdb${row.tmdb_poster}` : null;
 }
 
 const num = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value));
@@ -64,7 +73,7 @@ export async function browseWorks(db: DB, query: BrowseQuery): Promise<{ works: 
 		all<{ n: number }>(db, `SELECT COUNT(*) AS n FROM works w ${clause}`, params),
 		all<WorkRow>(
 			db,
-			`SELECT w.id, w.title, w.year, w.kind, w.canonical_poster FROM works w ${clause}
+			`SELECT w.id, w.title, w.year, w.kind, ${POSTER_COLUMNS} FROM works w ${clause}
 			ORDER BY w.title COLLATE NOCASE, w.year LIMIT ? OFFSET ?`,
 			[...params, query.limit ?? 60, query.offset ?? 0]
 		)
@@ -81,7 +90,7 @@ export async function browseWorks(db: DB, query: BrowseQuery): Promise<{ works: 
 				title: row.title,
 				year: num(row.year),
 				kind: row.kind,
-				posterItemId: num(row.canonical_poster),
+				posterUrl: posterUrl(row),
 				sources: sourcesByWork.get(id) ?? [],
 				streaming: streamingByWork.get(id) ?? []
 			};
@@ -109,7 +118,11 @@ async function workSources(db: DB, workIds: number[]): Promise<Map<number, WorkS
 }
 
 export async function getWork(db: DB, id: number): Promise<(WorkCard & { items: WorkItem[] }) | null> {
-	const work = await get<WorkRow>(db, 'SELECT id, title, year, kind, canonical_poster FROM works WHERE id = ?', [id]);
+	const work = await get<WorkRow>(
+		db,
+		`SELECT w.id, w.title, w.year, w.kind, ${POSTER_COLUMNS} FROM works w WHERE w.id = ?`,
+		[id]
+	);
 	if (!work) return null;
 	const [items, sources, streaming] = await Promise.all([
 		all<{
@@ -138,7 +151,7 @@ export async function getWork(db: DB, id: number): Promise<(WorkCard & { items: 
 		title: work.title,
 		year: num(work.year),
 		kind: work.kind,
-		posterItemId: num(work.canonical_poster),
+		posterUrl: posterUrl(work),
 		sources: sources.get(id) ?? [],
 		streaming: streaming.get(id) ?? [],
 		items: items.map((row) => ({

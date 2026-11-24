@@ -27,7 +27,7 @@
 <a href="/" class="btn btn-quiet -ml-2"><Icon name="arrow-left" />Library</a>
 
 <div class="mt-4 grid gap-8 sm:grid-cols-[minmax(0,14rem)_1fr]">
-	<Poster itemId={work.posterItemId} title={work.title} class="w-40 sm:w-full" />
+	<Poster src={work.posterUrl} title={work.title} class="w-40 sm:w-full" />
 
 	<div class="min-w-0">
 		<h1 class="font-serif text-4xl leading-tight tracking-tight">{work.title}</h1>

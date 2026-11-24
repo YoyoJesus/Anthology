@@ -28,6 +28,11 @@ function types() {
 	return supportedSourceTypes(config.enableMockSources);
 }
 
+/** Match new collection titles on TMDB straight away, so their posters and availability show without waiting. */
+async function lookUpNewTitles(): Promise<void> {
+	await runAvailabilityRefresh(Date.now() + 60_000).catch(() => null);
+}
+
 function message(err: unknown): string {
 	return err instanceof Error ? err.message : 'Something went wrong';
 }
@@ -88,6 +93,7 @@ export const actions: Actions = {
 		const id = await createSource(await getDb(), parsed.value);
 		if (parsed.value.type === 'collection') {
 			const result = await runSync(id).catch(() => null);
+			await lookUpNewTitles();
 			if (result)
 				return { add: { created: id, notice: `Added ${result.items} ${result.items === 1 ? 'title' : 'titles'}.` } };
 		}
@@ -133,6 +139,7 @@ export const actions: Actions = {
 		await setCollection(db, id, parsed.value);
 		try {
 			const result = await runSync(id);
+			await lookUpNewTitles();
 			return {
 				row: { id, notice: `Saved. ${result.items} ${result.items === 1 ? 'title' : 'titles'} in this collection.` }
 			};

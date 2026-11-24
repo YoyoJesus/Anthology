@@ -83,7 +83,7 @@ Years are optional but make matching more reliable. A title without a year joins
 
 ### Streaming availability
 
-Create a free TMDB account, copy the API read access token from its API settings, and set it as `TMDB_READ_TOKEN`. Then tick the services you subscribe to under Settings and save. Each ticked service becomes a source holding its subscription catalogue for your region, imported from TMDB and refreshed by the scheduled job. Unticking a service removes its catalogue. Titles you own are marked when a service has them: either they merge with a catalogue title, or the **Check availability** button looks them up (rechecked weekly). Titles without a TMDB ID, such as digital collection entries, are matched by exact title and year. All of this reflects what each service offers in your region, not what is in your account. Streaming data comes from JustWatch via TMDB.
+Create a free TMDB account, copy the API read access token from its API settings, and set it as `TMDB_READ_TOKEN`. Then tick the services you subscribe to under Settings and save. Each ticked service becomes a source holding its subscription catalogue for your region, imported from TMDB and refreshed by the scheduled job. Unticking a service removes its catalogue. Titles you own are marked when a service has them: either they merge with a catalogue title, or the **Check availability** button looks them up (rechecked weekly). Titles without a TMDB ID, such as digital collection entries, are matched by exact title and year, and get their poster from TMDB once matched. All of this reflects what each service offers in your region, not what is in your account. Streaming data comes from JustWatch via TMDB.
 
 ## Development
 

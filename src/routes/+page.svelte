@@ -2,6 +2,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import Poster from '#lib/components/Poster.svelte';
 	import SourceTag from '#lib/components/SourceTag.svelte';
+	import { servicesNotListed } from '#lib/service-links.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -143,9 +144,10 @@
 							<SourceTag name={source.sourceName} type={source.sourceType} />
 						{/each}
 					</div>
-					{#if work.streaming.length}
+					{@const extra = servicesNotListed(work.streaming, work.sources)}
+					{#if extra.length}
 						<p class="mt-0.5 truncate text-xs text-faint">
-							{work.streaming.map((id) => serviceNames.get(id) ?? id).join(' · ')}
+							{extra.map((id) => serviceNames.get(id) ?? id).join(' · ')}
 						</p>
 					{/if}
 				</a>

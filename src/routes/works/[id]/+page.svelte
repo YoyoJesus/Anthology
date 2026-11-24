@@ -4,13 +4,15 @@
 	import { GENRES } from '#lib/genres.ts';
 	import Poster from '#lib/components/Poster.svelte';
 	import SourceTag from '#lib/components/SourceTag.svelte';
-	import { serviceSearchUrl } from '#lib/service-links.ts';
+	import { serviceSearchUrl, servicesNotListed } from '#lib/service-links.ts';
 	import { STREAMING_SERVICES } from '#lib/types.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 	const work = $derived(data.work);
 	const info = $derived(data.info);
+	const extraServices = $derived(servicesNotListed(work.streaming, work.sources));
+	const hasStreamingSource = $derived(work.items.some((item) => item.sourceType === 'streaming'));
 	const genreNames = $derived(work.genres.map((id) => GENRES.find((g) => g.id === id)?.name ?? id));
 
 	/** Coming from the library, "Library" steps back so filters, page and scroll position are kept. */
@@ -118,11 +120,14 @@
 				</li>
 			{/each}
 		</ul>
+		{#if hasStreamingSource}
+			<p class="mt-1 text-xs text-faint">Service links open the service's search for this title.</p>
+		{/if}
 
-		{#if work.streaming.length}
-			<h2 class="label mt-8">Streaming on</h2>
+		{#if extraServices.length}
+			<h2 class="label mt-8">Also streaming on</h2>
 			<div class="mt-2 flex flex-wrap gap-2">
-				{#each work.streaming as id (id)}
+				{#each extraServices as id (id)}
 					<a href={serviceSearchUrl(id, work.title)} target="_blank" rel="noopener noreferrer" class="btn">
 						{STREAMING_SERVICES.find((s) => s.id === id)?.name ?? id}
 						<Icon name="external-link" />
@@ -140,6 +145,8 @@
 					Where to watch <Icon name="external-link" />
 				</a>
 			{/if}
+		{/if}
+		{#if work.streaming.length || hasStreamingSource}
 			<p class="mt-1 text-xs text-faint">Streaming data from JustWatch via TMDB.</p>
 		{/if}
 

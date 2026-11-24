@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { serviceSearchUrl } from '../src/lib/service-links';
+import { serviceSearchUrl, servicesNotListed } from '../src/lib/service-links';
 
 describe('serviceSearchUrl', () => {
 	it('encodes the title into each service search', () => {
@@ -7,5 +7,15 @@ describe('serviceSearchUrl', () => {
 		expect(serviceSearchUrl('prime', 'Harbor Lights')).toBe(
 			'https://www.primevideo.com/search/?phrase=Harbor%20Lights'
 		);
+	});
+});
+
+describe('servicesNotListed', () => {
+	it('drops services already shown as a source', () => {
+		const sources = [
+			{ sourceType: 'streaming', sourceName: 'Netflix' },
+			{ sourceType: 'collection', sourceName: 'Hulu' }
+		];
+		expect(servicesNotListed(['netflix', 'hulu'], sources)).toEqual(['hulu']);
 	});
 });

@@ -30,18 +30,34 @@ interface Credit {
 }
 
 /** The best-known person matching a name, with the TMDB IDs of everything they acted in or directed. */
+export type PersonRole = 'actor' | 'director';
+
+/** TMDB lists film directors as "Director" and the people who created a show as "Creator". */
+const DIRECTING_JOBS = new Set(['Director', 'Creator']);
+const DEPARTMENT: Record<PersonRole, readonly string[]> = {
+	actor: ['Acting'],
+	director: ['Directing', 'Writing', 'Creator']
+};
+
+/**
+ * The best-known person matching a name in that role, with the TMDB IDs of everything they acted in (actor) or
+ * directed or created (director). Among people with the same name, one known for the role is preferred.
+ */
 export async function findPersonCredits(
 	query: string,
 	token: string,
+	role: PersonRole = 'actor',
 	fetchFn: typeof fetch = globalThis.fetch
 ): Promise<PersonCredits | null> {
-	const search = await tmdbGet<{ results?: { id: number; name: string }[] }>(
+	const search = await tmdbGet<{ results?: { id: number; name: string; known_for_department?: string }[] }>(
 		'/search/person',
 		{ query, include_adult: 'false' },
 		token,
 		fetchFn
 	);
-	const person = search.results?.[0];
+	const results = search.results ?? [];
+	const person =
+		results.find((p) => p.known_for_department && DEPARTMENT[role].includes(p.known_for_department)) ?? results[0];
 	if (!person) return null;
 	const credits = await tmdbGet<{ cast?: Credit[]; crew?: Credit[] }>(
 		`/person/${person.id}/combined_credits`,
@@ -49,7 +65,8 @@ export async function findPersonCredits(
 		token,
 		fetchFn
 	);
-	const all = [...(credits.cast ?? []), ...(credits.crew ?? []).filter((c) => c.job === 'Director')];
+	const all =
+		role === 'actor' ? (credits.cast ?? []) : (credits.crew ?? []).filter((c) => c.job && DIRECTING_JOBS.has(c.job));
 	const ids = (type: 'movie' | 'tv') => [...new Set(all.filter((c) => c.media_type === type).map((c) => String(c.id)))];
 	return { name: person.name, movie: ids('movie'), show: ids('tv') };
 }

@@ -27,7 +27,7 @@
 		history.back();
 	}
 
-	const personHref = (name: string) => `/?${new URLSearchParams({ q: name, by: 'person' })}`;
+	const personHref = (name: string, by: 'actor' | 'director' = 'actor') => `/?${new URLSearchParams({ q: name, by })}`;
 	const initials = (name: string) =>
 		name
 			.split(/\s+/)
@@ -99,7 +99,7 @@
 			<p class="mt-4 text-sm text-muted">
 				{work.kind === 'show' ? 'Created by' : 'Directed by'}
 				{#each info.directors as name, i (name)}{i ? ', ' : ' '}<a
-						href={personHref(name)}
+						href={personHref(name, 'director')}
 						class="text-ink underline decoration-line underline-offset-4 hover:decoration-accent"
 					>
 						{name}

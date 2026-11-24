@@ -19,7 +19,10 @@
 				})
 			: []
 	);
-	const searchBy = $derived(onLibrary && page.url.searchParams.get('by') === 'person' ? 'person' : '');
+	const searchBy = $derived.by(() => {
+		const by = onLibrary ? page.url.searchParams.get('by') : null;
+		return by === 'director' ? 'director' : by === 'actor' || by === 'person' ? 'actor' : '';
+	});
 
 	/** Search as you type. While the box has focus, the URL never overwrites what is being typed. */
 	let query = $state('');
@@ -35,7 +38,7 @@
 		if (!form) return;
 		clearTimeout(timer);
 		const fields = new FormData(form);
-		const byPerson = fields.get('by') === 'person';
+		const byPerson = fields.get('by') === 'actor' || fields.get('by') === 'director';
 		const q = String(fields.get('q') ?? '').trim();
 		// People searches ask TMDB, so wait for a few letters and a longer pause.
 		if (byPerson && q.length > 0 && q.length < 3) return;
@@ -71,7 +74,8 @@
 					<span class="sr-only">Search by</span>
 					<select name="by" class="mr-2 text-sm" value={searchBy} onchange={searchSoon}>
 						<option value="">Titles</option>
-						<option value="person">People</option>
+						<option value="actor">Actors</option>
+						<option value="director">Directors</option>
 					</select>
 				</label>
 				<label class="relative w-full">
@@ -85,7 +89,7 @@
 						onfocus={() => (focused = true)}
 						onblur={() => (focused = false)}
 						autocomplete="off"
-						placeholder="Search titles or people"
+						placeholder="Search"
 						class="w-full pl-9"
 					/>
 				</label>

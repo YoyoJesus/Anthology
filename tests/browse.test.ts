@@ -106,32 +106,53 @@ describe('genresFromTmdb', () => {
 });
 
 describe('findPersonCredits', () => {
-	it('returns acting and directing credits for the best match', async () => {
-		const fetchFn = vi.fn(async (input: string | URL | Request) => {
-			const url = new URL(String(input));
-			if (url.pathname.endsWith('/search/person'))
-				return Response.json({ results: [{ id: 77, name: 'Synthetic Actor' }] });
+	/** Two people share the name: an actor (listed first) and a director. */
+	const fetchFn = vi.fn(async (input: string | URL | Request) => {
+		const url = new URL(String(input));
+		if (url.pathname.endsWith('/search/person'))
+			return Response.json({
+				results: [
+					{ id: 77, name: 'Synthetic Name', known_for_department: 'Acting' },
+					{ id: 88, name: 'Synthetic Name', known_for_department: 'Directing' }
+				]
+			});
+		if (url.pathname.includes('/person/77/'))
 			return Response.json({
 				cast: [
 					{ id: 1, media_type: 'movie' },
 					{ id: 9, media_type: 'tv' },
 					{ id: 1, media_type: 'movie' }
 				],
-				crew: [
-					{ id: 2, media_type: 'movie', job: 'Director' },
-					{ id: 3, media_type: 'movie', job: 'Producer' }
-				]
+				crew: [{ id: 4, media_type: 'movie', job: 'Producer' }]
 			});
+		return Response.json({
+			cast: [{ id: 5, media_type: 'movie' }],
+			crew: [
+				{ id: 2, media_type: 'movie', job: 'Director' },
+				{ id: 6, media_type: 'tv', job: 'Creator' },
+				{ id: 3, media_type: 'movie', job: 'Producer' }
+			]
 		});
-		expect(await findPersonCredits('synthetic actor', 't', fetchFn)).toEqual({
-			name: 'Synthetic Actor',
-			movie: ['1', '2'],
+	});
+
+	it('returns what an actor appeared in', async () => {
+		expect(await findPersonCredits('synthetic name', 't', 'actor', fetchFn)).toEqual({
+			name: 'Synthetic Name',
+			movie: ['1'],
 			show: ['9']
 		});
 	});
 
+	it('returns what a director directed or created, preferring someone known for directing', async () => {
+		expect(await findPersonCredits('synthetic name', 't', 'director', fetchFn)).toEqual({
+			name: 'Synthetic Name',
+			movie: ['2'],
+			show: ['6']
+		});
+	});
+
 	it('returns null when nobody matches', async () => {
-		const fetchFn = vi.fn(async () => Response.json({ results: [] }));
-		expect(await findPersonCredits('nobody', 't', fetchFn)).toBeNull();
+		const empty = vi.fn(async () => Response.json({ results: [] }));
+		expect(await findPersonCredits('nobody', 't', 'actor', empty)).toBeNull();
 	});
 });

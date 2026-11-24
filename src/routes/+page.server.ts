@@ -1,7 +1,7 @@
 import { config } from '#lib/server/config.ts';
 import { getDb } from '#lib/server/db.ts';
 import { listSources } from '#lib/server/sources.ts';
-import { findPersonCredits, type PersonCredits } from '#lib/server/tmdb.ts';
+import { findPersonCredits, type PersonCredits, type PersonRole } from '#lib/server/tmdb.ts';
 import { BROWSE_SORTS, browseWorks, type BrowseSort } from '#lib/server/works.ts';
 import { getEnabledServices } from '#lib/server/streaming.ts';
 import { GENRES, isGenreId } from '#lib/genres.ts';
@@ -16,7 +16,17 @@ export const load: PageServerLoad = async ({ url }) => {
 	const db = await getDb();
 	const params = url.searchParams;
 	const q = params.get('q')?.trim() ?? '';
-	const byPerson = params.get('by') === 'person' && q !== '';
+	// 'person' is the older name for actor searches, kept so existing links work.
+	const byParam = params.get('by');
+	const role: PersonRole | null =
+		q === ''
+			? null
+			: byParam === 'director'
+				? 'director'
+				: byParam === 'actor' || byParam === 'person'
+					? 'actor'
+					: null;
+	const byPerson = role !== null;
 	const kindParam = params.get('kind') as MediaKind | null;
 	const kind = kindParam && BROWSABLE.includes(kindParam) ? kindParam : undefined;
 	const sourceId = Number(params.get('source')) || undefined;
@@ -36,9 +46,9 @@ export const load: PageServerLoad = async ({ url }) => {
 	let person: PersonCredits | null = null;
 	let personError: string | null = null;
 	if (byPerson) {
-		if (!config.tmdbToken) personError = 'Set TMDB_READ_TOKEN to search by actor.';
+		if (!config.tmdbToken) personError = 'Set TMDB_READ_TOKEN to search by actor or director.';
 		else
-			person = await findPersonCredits(q, config.tmdbToken).catch(() => {
+			person = await findPersonCredits(q, config.tmdbToken, role ?? 'actor').catch(() => {
 				personError = 'TMDB could not be reached. Try again shortly.';
 				return null;
 			});
@@ -68,7 +78,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		personError,
 		filters: {
 			q,
-			by: byPerson ? 'person' : '',
+			by: role ?? '',
 			kind: kind ?? '',
 			source: sourceId ?? '',
 			streaming: streaming ?? '',

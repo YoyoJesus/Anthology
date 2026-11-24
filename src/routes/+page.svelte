@@ -20,9 +20,11 @@
 	}
 
 	const heading = $derived(
-		data.filters.by === 'person'
+		data.filters.by
 			? data.person
-				? `Titles with ${data.person}`
+				? data.filters.by === 'director'
+					? `Directed or created by ${data.person}`
+					: `Titles with ${data.person}`
 				: `No one found for “${data.filters.q}”`
 			: data.filters.q
 				? `Results for “${data.filters.q}”`

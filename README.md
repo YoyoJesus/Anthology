@@ -16,7 +16,7 @@ A catalogue that pulls the libraries of your media servers into one searchable c
 **Library**
 
 - One entry per title, merged across sources by external ID (TMDB, IMDb, TVDB), then by normalized title and year
-- Search by title or by person (actor or director), with results updating as you type
+- Search by title, actor, or director and show creator, with results updating as you type
 - Sort by rating (the default), newest or title, and filter by movies or shows, genre, minimum rating, source and streaming service
 - Filters live in the address, so the back button and the title page's **Library** link return you to where you were
 - Posters, ratings and genres from TMDB, including for titles that came without them

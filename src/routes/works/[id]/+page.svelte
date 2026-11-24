@@ -5,7 +5,7 @@
 	import Poster from '#lib/components/Poster.svelte';
 	import SourceTag from '#lib/components/SourceTag.svelte';
 	import { serviceSearchUrl, servicesNotListed } from '#lib/service-links.ts';
-	import { STREAMING_SERVICES } from '#lib/types.ts';
+	import { serviceName as nameOf } from '#lib/streaming-services.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -35,7 +35,7 @@
 			.slice(0, 2)
 			.map((part) => part[0])
 			.join('');
-	const serviceName = (id: string) => STREAMING_SERVICES.find((s) => s.id === id)?.name ?? id;
+	const serviceName = nameOf;
 	const openLabel = (item: (typeof work.items)[number]) =>
 		item.sourceType === 'plex' ? 'Plex' : item.sourceType === 'jellyfin' ? 'Jellyfin' : item.sourceName;
 

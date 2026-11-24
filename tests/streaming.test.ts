@@ -28,7 +28,7 @@ describe('servicesFromProviders', () => {
 			}
 		};
 		expect(servicesFromProviders(payload, 'US')).toEqual({
-			services: ['netflix', 'hulu', 'disney'],
+			services: ['netflix', 'disney', 'hulu'],
 			link: 'https://www.themoviedb.org/movie/1/watch?locale=US'
 		});
 		expect(servicesFromProviders(payload, 'GB').services).toEqual(['prime']);

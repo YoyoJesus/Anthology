@@ -22,7 +22,7 @@ import {
 } from '#lib/server/sources.ts';
 import { getEnabledServices, setEnabledServices } from '#lib/server/streaming.ts';
 import { parseCollectionText, parseSourceForm } from '#lib/server/validation.ts';
-import { STREAMING_SERVICES, type StreamingServiceId } from '#lib/types.ts';
+import { STREAMING_SERVICES, servicesForRegion, type StreamingServiceId } from '#lib/streaming-services.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 /** Stop starting new work well inside the 300 second function limit, since one sync can take a while. */
@@ -70,6 +70,10 @@ export const load: PageServerLoad = async () => {
 		streaming: {
 			enabled,
 			region: config.streamingRegion,
+			// Regional services from other countries are hidden, unless one is already ticked.
+			offered: STREAMING_SERVICES.filter(
+				(s) => servicesForRegion(config.streamingRegion).includes(s) || enabled.includes(s.id)
+			),
 			configured: Boolean(config.tmdbToken),
 			refreshing,
 			checked: Number(checked?.n ?? 0)

@@ -1,6 +1,6 @@
-import { STREAMING_SERVICES, type MediaKind, type StreamingServiceId } from '#lib/types.ts';
+import { isServiceId, serviceForProvider, serviceSearchUrl, type StreamingServiceId } from '#lib/streaming-services.ts';
+import type { MediaKind } from '#lib/types.ts';
 import { genresFromTmdb } from '#lib/genres.ts';
-import { serviceSearchUrl } from '#lib/service-links.ts';
 import { config } from '../config';
 import type { Library, RawItem, SourceAdapter, SourceConfig } from './types';
 
@@ -21,21 +21,9 @@ export function fetchTmdbPoster(path: string, fetchFn: typeof fetch = globalThis
 	return fetchFn(`${TMDB_IMAGES}${path}`, { signal: AbortSignal.timeout(15_000) });
 }
 
-/**
- * Provider names as TMDB lists them, lowercased. Plans with ads count as the same service. Paid add-ons ("... Amazon
- * Channel"), stores ("Amazon Video") and Amazon's free tier ("Amazon Prime Video Free with Ads") do not.
- */
-export const SERVICE_PATTERNS: Record<StreamingServiceId, RegExp> = {
-	netflix: /^netflix\b/,
-	prime: /^amazon prime video( with ads)?$/,
-	hulu: /^hulu\b/,
-	disney: /^disney(\+| plus)/,
-	appletv: /^apple tv( plus|\+)?$/
-};
-
 export function serviceFromBaseUrl(baseUrl: string): StreamingServiceId | null {
 	const id = baseUrl.startsWith(STREAMING_URL_PREFIX) ? baseUrl.slice(STREAMING_URL_PREFIX.length) : '';
-	return STREAMING_SERVICES.some((s) => s.id === id) ? (id as StreamingServiceId) : null;
+	return isServiceId(id) ? id : null;
 }
 
 interface DiscoverResult {
@@ -96,9 +84,8 @@ export function createStreamingAdapter(
 			ids = tmdb<{ results?: { provider_id: number; provider_name: string }[] }>(`/watch/providers/${kind}`, {
 				watch_region: deps.region
 			}).then((body) => {
-				const pattern = SERVICE_PATTERNS[service!];
 				return (body.results ?? [])
-					.filter((p) => pattern.test(p.provider_name.trim().toLowerCase()))
+					.filter((p) => serviceForProvider(p.provider_name) === service)
 					.map((p) => p.provider_id);
 			});
 			providerCache.set(kind, ids);

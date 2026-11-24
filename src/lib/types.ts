@@ -1,3 +1,5 @@
+import type { StreamingServiceId } from './streaming-services.ts';
+
 export const SOURCE_TYPES = [
 	'plex',
 	'jellyfin',
@@ -58,11 +60,4 @@ export interface WorkItem {
 	externalIds: ExternalIds;
 }
 
-export const STREAMING_SERVICES = [
-	{ id: 'netflix', name: 'Netflix' },
-	{ id: 'prime', name: 'Prime Video' },
-	{ id: 'hulu', name: 'Hulu' },
-	{ id: 'disney', name: 'Disney+' },
-	{ id: 'appletv', name: 'Apple TV+' }
-] as const;
-export type StreamingServiceId = (typeof STREAMING_SERVICES)[number]['id'];
+export { STREAMING_SERVICES, type StreamingServiceId } from './streaming-services.ts';

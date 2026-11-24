@@ -10,7 +10,7 @@ A catalogue that pulls the libraries of your media servers into one searchable c
 
 - Plex and Jellyfin servers (movies and TV shows), added and tested from Settings
 - Digital collections: paste a list of titles you own, such as Apple TV purchases or DVDs
-- Streaming catalogues for Netflix, Prime Video, Hulu, Disney+ and Apple TV+: everything each service you tick includes with a subscription in your region
+- Streaming catalogues for over 30 services, from Netflix, Prime Video, Disney+, Hulu, Apple TV+, HBO Max, Paramount+ and Peacock to free services such as Tubi and Pluto TV, live TV services, and regional ones such as BBC iPlayer, Crave and Stan: everything each service you tick includes in your region
 - A sample-data source for trying the app without a server (dev only, unless `ENABLE_MOCK_SOURCES=true`)
 
 **Library**
@@ -110,10 +110,12 @@ A title without a year joins an existing title only when exactly one matches. Ti
 
 Create a free TMDB account, copy the API read access token from its API settings, and set it as `TMDB_READ_TOKEN`. Then tick the services you subscribe to under Settings and click **Save services**.
 
-- Each ticked service becomes a source holding what it includes with a subscription in your region, imported from TMDB and refreshed by the scheduled job. Store rentals and purchases, paid add-on channels and free tiers are left out. Unticking a service removes its catalogue.
+- Services are grouped into subscriptions, free and live TV. Regional services only appear when `STREAMING_REGION` is a country TMDB lists them in.
+- Each ticked service becomes a source holding what it includes in your region, imported from TMDB and refreshed by the scheduled job. Store rentals and purchases, paid add-on channels and free tiers are left out. Unticking a service removes its catalogue.
 - A large catalogue can take a while to import. If one is not finished after saving, use its **Sync now** button or wait for the scheduled job.
 - Titles you own are marked when a service has them, either because they merge with a catalogue title or through **Check availability** (rechecked weekly).
-- TMDB has no links to a title inside each service, so service links open the service's own search for the title.
+- TMDB has no links to a title inside each service, so service links open the service's own search for the title, or its home page where search cannot be opened from a link.
+- To add a service, add an entry to `src/lib/streaming-services.ts` with a pattern matching its TMDB provider name. Match the service itself, not the same catalogue resold as an Amazon, Apple TV or Roku channel.
 
 This reflects what each service offers in your region, not what is in your account. TMDB's lists can lag behind the services, so expect the odd title that has just left or arrived. Streaming data comes from JustWatch via TMDB.
 

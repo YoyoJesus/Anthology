@@ -3,7 +3,8 @@
 	import { onMount } from 'svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import SourceTag from '#lib/components/SourceTag.svelte';
-	import { STREAMING_SERVICES, type SourceType } from '#lib/types.ts';
+	import { SERVICE_GROUPS } from '#lib/streaming-services.ts';
+	import type { SourceType } from '#lib/types.ts';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -291,27 +292,36 @@
 <section class="mt-12 max-w-xl" aria-labelledby="streaming-heading">
 	<h2 id="streaming-heading" class="text-lg font-medium">Streaming services</h2>
 	<p class="mt-1 text-sm text-muted">
-		Tick the services you subscribe to. Each one becomes a source with its full subscription catalogue for region {data
-			.streaming.region}, so you can browse and search everything you can stream. Titles you own are marked when a
-		service has them. Untick a service to remove its catalogue.
+		Tick the services you use. Each one becomes a source holding everything it includes in region {data.streaming
+			.region}, so you can browse and search what you can watch. Titles you own are marked when a service has them.
+		Untick a service to remove its catalogue.
 	</p>
 
 	<form method="post" action="?/saveStreaming" class="mt-4" use:enhance={track('streaming')}>
-		<fieldset class="grid gap-2 sm:grid-cols-2">
-			<legend class="sr-only">Services</legend>
-			{#each STREAMING_SERVICES as service (service.id)}
-				<label class="flex items-center gap-2 text-sm">
-					<input
-						type="checkbox"
-						name="service"
-						value={service.id}
-						checked={data.streaming.enabled.includes(service.id)}
-						class="size-4 accent-accent"
-					/>
-					{service.name}
-				</label>
+		<div class="grid gap-6">
+			{#each SERVICE_GROUPS as group (group.id)}
+				{@const services = data.streaming.offered.filter((s) => s.group === group.id)}
+				{#if services.length}
+					<fieldset>
+						<legend class="text-sm font-medium">{group.name}</legend>
+						<div class="mt-2 grid gap-2 sm:grid-cols-2">
+							{#each services as service (service.id)}
+								<label class="flex items-center gap-2 text-sm">
+									<input
+										type="checkbox"
+										name="service"
+										value={service.id}
+										checked={data.streaming.enabled.includes(service.id)}
+										class="size-4 accent-accent"
+									/>
+									{service.name}
+								</label>
+							{/each}
+						</div>
+					</fieldset>
+				{/if}
 			{/each}
-		</fieldset>
+		</div>
 
 		{#if streamingResult && 'error' in streamingResult}
 			<p class="mt-3 flex items-center gap-1.5 text-sm text-danger" role="alert">

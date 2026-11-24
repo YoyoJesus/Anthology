@@ -1,7 +1,7 @@
 import { genresFromTmdb, type GenreId } from '#lib/genres.ts';
-import { STREAMING_SERVICES, type StreamingServiceId } from '#lib/types.ts';
+import { STREAMING_SERVICES, serviceForProvider, type StreamingServiceId } from '#lib/streaming-services.ts';
 import { all, get, getSetting, setSetting, type DB } from './db';
-import { SERVICE_PATTERNS, TMDB_POSTER_PATH } from './adapters/streaming';
+import { TMDB_POSTER_PATH } from './adapters/streaming';
 import { normalizeTitle, parseIds } from './matcher';
 import { metadataStatements } from './metadata';
 
@@ -25,12 +25,16 @@ export function servicesFromProviders(
 ): { services: StreamingServiceId[]; link: string | null } {
 	const entry = payload.results?.[region];
 	if (!entry) return { services: [], link: null };
-	const names: string[] = [];
+	const found = new Set<StreamingServiceId>();
 	for (const category of SUBSCRIPTION_CATEGORIES) {
 		const list = entry[category];
-		if (Array.isArray(list)) for (const p of list) names.push(p.provider_name.trim().toLowerCase());
+		if (!Array.isArray(list)) continue;
+		for (const p of list) {
+			const service = serviceForProvider(p.provider_name);
+			if (service) found.add(service);
+		}
 	}
-	const services = STREAMING_SERVICES.map((s) => s.id).filter((id) => names.some((n) => SERVICE_PATTERNS[id].test(n)));
+	const services = STREAMING_SERVICES.map((s) => s.id).filter((id) => found.has(id));
 	const link =
 		typeof entry.link === 'string' && entry.link.startsWith('https://www.themoviedb.org/') ? entry.link : null;
 	return { services, link };

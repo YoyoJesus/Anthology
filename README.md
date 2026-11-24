@@ -6,19 +6,31 @@ A catalogue that pulls the libraries of your media servers into one searchable c
 
 ## What works today
 
-- Plex and Jellyfin sources (movies and TV shows), added and tested from the settings page
+**Sources**
+
+- Plex and Jellyfin servers (movies and TV shows), added and tested from Settings
+- Digital collections: paste a list of titles you own, such as Apple TV purchases or DVDs
+- Streaming catalogues for Netflix, Prime Video, Hulu, Disney+ and Apple TV+: everything each service you tick includes with a subscription in your region
 - A sample-data source for trying the app without a server (dev only, unless `ENABLE_MOCK_SOURCES=true`)
+
+**Library**
+
+- One entry per title, merged across sources by external ID (TMDB, IMDb, TVDB), then by normalized title and year
+- Search by title or by person (actor or director), with results updating as you type
+- Sort by rating (the default), newest or title, and filter by movies or shows, genre, minimum rating, source and streaming service
+- Filters live in the address, so the back button and the title page's **Library** link return you to where you were
+- Posters, ratings and genres from TMDB, including for titles that came without them
+
+**Title pages**
+
+- Rating, genres, runtime, summary, director (or creator) and top cast, with each name linking to their other titles in your library
+- Every source that has the title, with a link to open it there. Streaming services open their own search for the title
+
+**Running it**
+
 - Full sync per source, on a schedule or with **Sync now**. Items removed from a source leave the library on the next sync
-- Matching across sources by external ID (TMDB, IMDb, TVDB), then by normalized title and year
-- Library browse with search, kind filter and source filter
-- Title pages listing every source that has the title, with a link to open it there
-- Posters fetched through the server so source credentials never reach the browser
 - Single admin password, set at first run or with `ADMIN_PASSWORD`
-- Source credentials encrypted at rest with `SECRET_KEY`
-- Sort by rating (the default), newest or title, filter by genre and minimum rating, and search by title or by actor and director
-- Title pages with rating, genres, summary, director and cast from TMDB
-- Digital collections: paste a list of titles you own on a store such as Apple TV, and they join the library like any other source
-- Optional streaming catalogues for Netflix, Prime Video, Hulu, Disney+ and Apple TV+: everything each service you tick offers in your region joins the library, and titles you own are marked when a service has them
+- Source credentials encrypted at rest with `SECRET_KEY`, and artwork fetched through the server so credentials never reach the browser
 
 See [PROJECT.md](PROJECT.md) for the full plan, including music, manual merge and split, and the stretch adapters.
 
@@ -35,7 +47,7 @@ Locally the database is a SQLite file in `./data`. Copy `.env.example` to `.env`
 
 ## Deploy to Vercel
 
-Anthology runs on Vercel with a [Turso](https://turso.tech) database (hosted libSQL, compatible with SQLite).
+Anthology runs on Vercel with a Turso database (hosted libSQL, compatible with SQLite).
 
 1. Create a database and an access token with the Turso CLI:
 
@@ -58,8 +70,8 @@ Anthology runs on Vercel with a [Turso](https://turso.tech) database (hosted lib
 | `SECRET_KEY`            | Yes      | Encrypts source credentials. Changing it makes saved credentials unreadable |
 | `CRON_SECRET`           | Yes      | Protects `/api/cron`. Vercel sends it with its scheduled requests           |
 | `SYNC_INTERVAL_MINUTES` | No       | Minimum time between automatic syncs of a source. Default `360`             |
-| `TMDB_READ_TOKEN`       | No       | TMDB read access token. Turns on streaming catalogues and lookups           |
-| `STREAMING_REGION`      | No       | Country used for streaming availability. Default `US`                       |
+| `TMDB_READ_TOKEN`       | No       | TMDB read access token. Turns on streaming, posters, ratings and details    |
+| `STREAMING_REGION`      | No       | Two-letter country code for streaming catalogues. Default `US`              |
 | `ENABLE_MOCK_SOURCES`   | No       | `true` allows the sample-data source type in production                     |
 
 The cron jobs in `vercel.json` run three times a day (06:00, 14:00 and 22:00 UTC). Each run syncs the sources that are due, least recently synced first, then checks streaming availability for titles you own. It stops starting new work after four minutes, inside the 300 second function limit. Anything left over is picked up by the next run or the buttons in Settings.
@@ -68,16 +80,18 @@ If you connect Turso through the Vercel Marketplace, check the database name at 
 
 Limits on Vercel:
 
-- Vercel cannot reach servers on your home network (addresses like `192.168.x.x`). Plex and Jellyfin sources only work if they have a public address, for example through a tunnel. Digital collections, streaming availability and sample data work as is.
+- Vercel cannot reach servers on your home network (addresses like `192.168.x.x`). Plex and Jellyfin sources only work if they have a public address, for example through a tunnel. Digital collections, streaming catalogues and sample data work as is.
 - A single sync has to finish within the 300 second function limit.
 
 ## Run as a Node server
 
-`npm run build` outside Vercel produces a Node server in `build/` (`node build`). It uses a local SQLite file unless `TURSO_DATABASE_URL` is set, and runs scheduled syncs itself. The `Dockerfile` and `compose.example.yaml` package this for Docker hosts such as Dokploy. Set `ORIGIN` to the public URL behind a reverse proxy, and back up the data volume. Point sources at addresses the container can reach, for example `http://192.168.1.10:8096` for Jellyfin or `http://192.168.1.10:32400` for Plex. Jellyfin needs an API key from its dashboard. Plex needs an `X-Plex-Token`.
+`npm run build` outside Vercel produces a Node server in `build/` (`node build`). It uses a local SQLite file unless `DATABASE_URL` or `TURSO_DATABASE_URL` is set, and runs scheduled syncs itself. The `Dockerfile` and `compose.example.yaml` package this for Docker hosts such as Dokploy. Set `ORIGIN` to the public URL behind a reverse proxy, and back up the data volume. Point sources at addresses the container can reach, for example `http://192.168.1.10:8096` for Jellyfin or `http://192.168.1.10:32400` for Plex. Jellyfin needs an API key from its dashboard. Plex needs an `X-Plex-Token`.
+
+## Using Anthology
 
 ### Digital collections
 
-Store purchases (Apple TV, Amazon, Google and similar) have no API Anthology can read, so add them as a **Digital collection** source and paste your titles, one per line:
+Store purchases and physical media have no API Anthology can read, so add them as a **Digital collection** source in Settings and paste your titles, one per line:
 
 ```text
 The Glass Orchard (2019)
@@ -85,11 +99,27 @@ Northbound
 TV: Low Tide Club (2018)
 ```
 
-Years are optional but make matching more reliable. A title without a year joins an existing title only when exactly one matches. Use **Edit list** on the source to change it later.
+- Prefix a show with `TV:`. Anything else is treated as a movie.
+- Years are optional but make matching more reliable. Use the original release year, not the year of a DVD or re-release: a title only matches TMDB within one year of its original release.
+- List the films in a box set one per line. A set name such as "Trilogy" or "Collection" has nothing to match.
+- Lines starting with `#` are ignored. Use **Edit list** on the source to change the list later.
 
-### Streaming availability
+A title without a year joins an existing title only when exactly one matches. Titles TMDB cannot match still appear in the library, without a poster or rating.
 
-Create a free TMDB account, copy the API read access token from its API settings, and set it as `TMDB_READ_TOKEN`. Then tick the services you subscribe to under Settings and save. Each ticked service becomes a source holding its subscription catalogue for your region, imported from TMDB and refreshed by the scheduled job. Unticking a service removes its catalogue. Titles you own are marked when a service has them: either they merge with a catalogue title, or the **Check availability** button looks them up (rechecked weekly). Titles without a TMDB ID, such as digital collection entries, are matched by exact title and year, and get their poster from TMDB once matched. All of this reflects what each service offers in your region, not what is in your account. Streaming data comes from JustWatch via TMDB.
+### Streaming services
+
+Create a free TMDB account, copy the API read access token from its API settings, and set it as `TMDB_READ_TOKEN`. Then tick the services you subscribe to under Settings and click **Save services**.
+
+- Each ticked service becomes a source holding what it includes with a subscription in your region, imported from TMDB and refreshed by the scheduled job. Store rentals and purchases, paid add-on channels and free tiers are left out. Unticking a service removes its catalogue.
+- A large catalogue can take a while to import. If one is not finished after saving, use its **Sync now** button or wait for the scheduled job.
+- Titles you own are marked when a service has them, either because they merge with a catalogue title or through **Check availability** (rechecked weekly).
+- TMDB has no links to a title inside each service, so service links open the service's own search for the title.
+
+This reflects what each service offers in your region, not what is in your account. TMDB's lists can lag behind the services, so expect the odd title that has just left or arrived. Streaming data comes from JustWatch via TMDB.
+
+### Ratings and genres
+
+Ratings are TMDB audience ratings out of 10. **Top rated** weighs each rating by its number of votes, so a title with a handful of perfect scores does not outrank a well-loved classic, and unrated titles sort last. The minimum-rating filter only counts titles with at least 25 votes. Ratings and genres arrive when a source syncs, or through **Check availability** for titles you own.
 
 ## Development
 

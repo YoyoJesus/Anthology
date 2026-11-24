@@ -1,0 +1,17 @@
+services:
+  anthology:
+    image: ghcr.io/yoyojesus/anthology:latest
+    build: .
+    ports:
+      - '3000:3000'
+    volumes:
+      - anthology-data:/data
+    environment:
+      - ADMIN_PASSWORD=change-me
+      - SECRET_KEY=change-me-to-a-long-random-string
+      - ORIGIN=http://localhost:3000
+      - TZ=America/New_York
+    restart: unless-stopped
+
+volumes:
+  anthology-data:

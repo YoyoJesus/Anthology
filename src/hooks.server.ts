@@ -3,7 +3,7 @@ import type { Handle, ServerInit } from '@sveltejs/kit/hooks';
 import { building } from '$app/env';
 import { SESSION_COOKIE, isSetupComplete, validateSession } from '#lib/server/auth.ts';
 import { config } from '#lib/server/config.ts';
-import { getDb } from '#lib/server/db.ts';
+import { databaseProblem, getDb } from '#lib/server/db.ts';
 import { startScheduler } from '#lib/server/jobs.ts';
 
 export const init: ServerInit = () => {
@@ -15,6 +15,9 @@ const PUBLIC_PATHS = ['/login', '/setup'];
 const MACHINE_PATHS = ['/api/cron'];
 
 export const handle: Handle = async ({ event, resolve }) => {
+	const problem = databaseProblem();
+	if (problem) return new Response(problem, { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+
 	const path = event.url.pathname;
 	if (MACHINE_PATHS.includes(path)) return resolve(event);
 

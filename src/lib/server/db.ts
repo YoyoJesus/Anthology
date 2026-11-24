@@ -136,7 +136,26 @@ export async function openDb(url: string, authToken?: string): Promise<DB> {
 
 let instance: Promise<DB> | undefined;
 
+/** Where the data lives, for display. Never includes the auth token. */
+export function databaseLabel(url = config.databaseUrl): string {
+	if (url.startsWith('file:') || url === ':memory:') return 'Local file';
+	try {
+		return `Turso (${new URL(url).hostname})`;
+	} catch {
+		return 'Remote database';
+	}
+}
+
+/** Vercel's filesystem does not outlive an instance, so a local file there would silently lose data. */
+export function databaseProblem(): string | null {
+	return config.onVercel && config.databaseUrl.startsWith('file:')
+		? 'No database configured. Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN for this Vercel environment, then redeploy.'
+		: null;
+}
+
 export function getDb(): Promise<DB> {
+	const problem = databaseProblem();
+	if (problem) return Promise.reject(new Error(problem));
 	instance ??= openDb(config.databaseUrl, config.databaseAuthToken).catch((err) => {
 		instance = undefined;
 		throw err;

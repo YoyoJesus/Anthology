@@ -2,7 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { createAdapter, supportedSourceTypes } from '#lib/server/adapters/index.ts';
 import { parseCollection } from '#lib/server/adapters/collection.ts';
 import { config } from '#lib/server/config.ts';
-import { get, getDb } from '#lib/server/db.ts';
+import { databaseLabel, get, getDb } from '#lib/server/db.ts';
 import { isRefreshingAvailability, isSyncing, runAvailabilityRefresh, runSync } from '#lib/server/jobs.ts';
 import {
 	createSource,
@@ -65,7 +65,8 @@ export const load: PageServerLoad = async () => {
 			configured: Boolean(config.tmdbToken),
 			refreshing,
 			checked: Number(checked?.n ?? 0)
-		}
+		},
+		database: databaseLabel()
 	};
 };
 

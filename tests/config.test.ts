@@ -20,3 +20,11 @@ describe('readConfig database', () => {
 		expect(config.databaseAuthToken).toBeUndefined();
 	});
 });
+
+describe('databaseLabel', () => {
+	it('names the host without the token, or a local file', async () => {
+		const { databaseLabel } = await import('../src/lib/server/db');
+		expect(databaseLabel('libsql://anthology-example.turso.io')).toBe('Turso (anthology-example.turso.io)');
+		expect(databaseLabel('file:/data/anthology.db')).toBe('Local file');
+	});
+});

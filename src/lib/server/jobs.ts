@@ -46,21 +46,33 @@ export async function runAvailabilityRefresh(deadline?: number, force = false): 
 export interface ScheduledRun {
 	synced: number[];
 	failed: { id: number; error: string }[];
+	/** Sources not reached before the budget ran out. */
+	remaining: number[];
 	availability: RefreshResult | null;
 }
 
-/** Sync stale sources, least recently synced first, then refresh availability. No new work starts after the budget. */
-export async function runScheduledJobs(budgetMs: number, now = Date.now()): Promise<ScheduledRun> {
+/**
+ * Sync stale sources, least recently synced first, then refresh availability. No new work starts after the budget.
+ * `force` syncs every enabled source regardless of when it last synced, for the Sync all button.
+ */
+export async function runScheduledJobs(
+	budgetMs: number,
+	now = Date.now(),
+	{ force = false }: { force?: boolean } = {}
+): Promise<ScheduledRun> {
 	const deadline = now + budgetMs;
 	const intervalMs = config.syncIntervalMinutes * 60 * 1000;
-	const result: ScheduledRun = { synced: [], failed: [], availability: null };
+	const result: ScheduledRun = { synced: [], failed: [], remaining: [], availability: null };
 	const sources = (await enabledSourceIds(await getDb())).sort((a, b) =>
 		(a.lastSyncAt ?? '').localeCompare(b.lastSyncAt ?? '')
 	);
 	for (const { id, lastSyncAt } of sources) {
-		if (Date.now() >= deadline) break;
 		const last = lastSyncAt ? Date.parse(`${lastSyncAt.replace(' ', 'T')}Z`) : 0;
-		if (now - last < intervalMs) continue;
+		if (!force && now - last < intervalMs) continue;
+		if (Date.now() >= deadline) {
+			result.remaining.push(id);
+			continue;
+		}
 		try {
 			await runSync(id);
 			result.synced.push(id);

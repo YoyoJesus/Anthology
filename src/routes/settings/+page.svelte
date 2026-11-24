@@ -48,6 +48,7 @@
 
 	const addResult = $derived(form && 'add' in form ? form.add : undefined);
 	const rowResult = $derived(form && 'row' in form ? form.row : undefined);
+	const syncAllResult = $derived(form && 'syncAll' in form ? form.syncAll : undefined);
 	const streamingResult = $derived(form && 'streaming' in form ? form.streaming : undefined);
 </script>
 
@@ -66,7 +67,31 @@
 {/if}
 
 <section class="mt-8" aria-labelledby="sources-heading">
-	<h2 id="sources-heading" class="text-lg font-medium">Sources</h2>
+	<div class="flex flex-wrap items-center justify-between gap-3">
+		<h2 id="sources-heading" class="text-lg font-medium">Sources</h2>
+		{#if data.sources.length > 1}
+			<form method="post" action="?/syncAll" use:enhance={track('syncAll')}>
+				<button class="btn" disabled={busy !== null || data.sources.some((s) => s.syncing)}>
+					<Icon
+						name="refresh-cw"
+						class="size-4 {busy === 'syncAll' ? 'animate-spin motion-reduce:animate-none' : ''}"
+					/>
+					{busy === 'syncAll' ? 'Syncing all' : 'Sync all'}
+				</button>
+			</form>
+		{/if}
+	</div>
+	{#if busy === 'syncAll'}
+		<p class="mt-2 text-sm text-muted">Syncing every source in turn. Large catalogues can take a few minutes.</p>
+	{:else if syncAllResult && 'error' in syncAllResult}
+		<p class="mt-2 flex items-start gap-1.5 text-sm text-danger" role="alert">
+			<Icon name="circle-alert" class="mt-0.5 shrink-0" />{syncAllResult.error}
+		</p>
+	{:else if syncAllResult && 'notice' in syncAllResult}
+		<p class="mt-2 flex items-start gap-1.5 text-sm text-ok">
+			<Icon name="circle-check" class="mt-0.5 shrink-0" />{syncAllResult.notice}
+		</p>
+	{/if}
 
 	{#if data.sources.length}
 		<ul class="mt-3 divide-y divide-line border-y border-line">

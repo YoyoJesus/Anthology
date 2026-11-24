@@ -3,7 +3,13 @@ import { createAdapter, supportedSourceTypes } from '#lib/server/adapters/index.
 import { parseCollection } from '#lib/server/adapters/collection.ts';
 import { config } from '#lib/server/config.ts';
 import { databaseLabel, get, getDb, isDeploymentDatabase } from '#lib/server/db.ts';
-import { isRefreshingAvailability, isSyncing, runAvailabilityRefresh, runSync } from '#lib/server/jobs.ts';
+import {
+	isRefreshingAvailability,
+	isSyncing,
+	runAvailabilityRefresh,
+	runScheduledJobs,
+	runSync
+} from '#lib/server/jobs.ts';
 import {
 	createSource,
 	deleteSource,
@@ -23,6 +29,8 @@ import type { Actions, PageServerLoad } from './$types';
 const REFRESH_BUDGET_MS = 200_000;
 /** No new catalogue import starts after this, leaving the rest of the limit for one large catalogue to finish. */
 const CATALOGUE_BUDGET_MS = 60_000;
+/** Sync all starts no new sync after this, so the last one (Prime Video can take a couple of minutes) still fits. */
+const SYNC_ALL_BUDGET_MS = 150_000;
 
 function types() {
 	return supportedSourceTypes(config.enableMockSources);
@@ -111,6 +119,26 @@ export const actions: Actions = {
 		} catch (err) {
 			return fail(400, { row: { id, error: message(err) } });
 		}
+	},
+	syncAll: async () => {
+		const db = await getDb();
+		const names = new Map((await listSources(db)).map((s) => [s.id, s.name]));
+		const result = await runScheduledJobs(SYNC_ALL_BUDGET_MS, Date.now(), { force: true });
+		const total = result.synced.length + result.failed.length + result.remaining.length;
+		const parts = [`Synced ${result.synced.length} of ${total} ${total === 1 ? 'source' : 'sources'}.`];
+		if (result.remaining.length)
+			parts.push(
+				`${result.remaining.map((id) => names.get(id)).join(', ')} will sync on the next run, or use Sync all again.`
+			);
+		if (result.availability?.checked)
+			parts.push(`Checked ${result.availability.checked} of your own titles for availability.`);
+		if (result.failed.length)
+			return fail(400, {
+				syncAll: {
+					error: `${parts.join(' ')} Failed: ${result.failed.map((f) => `${names.get(f.id)} (${f.error})`).join('; ')}`
+				}
+			});
+		return { syncAll: { notice: parts.join(' ') } };
 	},
 	sync: async ({ request }) => {
 		const id = await sourceIdFrom(request);

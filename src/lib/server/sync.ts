@@ -29,11 +29,37 @@ export function resolveWork(db: DB, raw: RawItem, existingItemId?: number): numb
 	const match = candidates.find((work) => !idsConflict(parseIds(work.external_ids_json), raw.externalIds));
 	if (match) return attachIds(db, match.id, raw.externalIds);
 
+	const loose = looseTitleMatch(db, raw);
+	if (loose !== null) return attachIds(db, loose, raw.externalIds);
+
 	const result = db
 		.prepare('INSERT INTO works (title, year, kind, match_key, external_ids_json) VALUES (?, ?, ?, ?, ?)')
 		.run(raw.title, raw.year, raw.kind, key, JSON.stringify(raw.externalIds));
 	const workId = Number(result.lastInsertRowid);
 	return attachIds(db, workId, raw.externalIds);
+}
+
+/**
+ * When one side has no year, pair it with the only work of the same kind and title.
+ * A yearless work that gains a year takes on that year.
+ */
+function looseTitleMatch(db: DB, raw: RawItem): number | null {
+	const prefix = matchKey(raw.kind, raw.title, null);
+	const candidates = (
+		raw.year === null
+			? db.prepare('SELECT id, external_ids_json FROM works WHERE match_key LIKE ?').all(`${prefix}%`)
+			: db.prepare('SELECT id, external_ids_json FROM works WHERE match_key = ?').all(prefix)
+	) as WorkRow[];
+	const usable = candidates.filter((work) => !idsConflict(parseIds(work.external_ids_json), raw.externalIds));
+	if (usable.length !== 1) return null;
+	if (raw.year !== null) {
+		db.prepare('UPDATE works SET year = ?, match_key = ? WHERE id = ?').run(
+			raw.year,
+			matchKey(raw.kind, raw.title, raw.year),
+			usable[0].id
+		);
+	}
+	return usable[0].id;
 }
 
 function attachIds(db: DB, workId: number, ids: ExternalIds): number {

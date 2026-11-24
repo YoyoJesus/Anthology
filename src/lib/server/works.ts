@@ -1,7 +1,7 @@
 import type { MediaKind, SourceType, StreamingServiceId, WorkCard, WorkItem, WorkSource } from '#lib/types.ts';
 import { all, get, type DB } from './db';
 import { parseIds } from './matcher';
-import { availabilityFor, getEnabledServices } from './streaming';
+import { AVAILABLE_SQL, availabilityFor, getEnabledServices } from './streaming';
 
 export interface BrowseQuery {
 	q?: string;
@@ -55,7 +55,7 @@ export async function browseWorks(db: DB, query: BrowseQuery): Promise<{ works: 
 		const services = query.streaming === 'any' ? enabled : enabled.filter((s) => s === query.streaming);
 		if (!services.length) return { works: [], total: 0 };
 		where.push(
-			`w.id IN (SELECT work_id FROM work_availability WHERE service IN (${services.map(() => '?').join(',')}))`
+			`w.id IN (SELECT work_id FROM (${AVAILABLE_SQL}) WHERE service IN (${services.map(() => '?').join(',')}))`
 		);
 		params.push(...services);
 	}

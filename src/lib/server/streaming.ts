@@ -1,5 +1,6 @@
 import { STREAMING_SERVICES, type StreamingServiceId } from '#lib/types.ts';
 import { all, get, getSetting, setSetting, type DB } from './db';
+import { SERVICE_PATTERNS } from './adapters/streaming';
 import { normalizeTitle, parseIds } from './matcher';
 
 const TMDB_API = 'https://api.themoviedb.org/3';
@@ -7,14 +8,6 @@ const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Subscription offers only. Store listings (buy/rent) say nothing about what you can already watch. */
 const SUBSCRIPTION_CATEGORIES = ['flatrate', 'ads'] as const;
-
-const PATTERNS: Record<StreamingServiceId, RegExp> = {
-	netflix: /^netflix\b/,
-	prime: /^amazon prime video\b/,
-	hulu: /^hulu\b/,
-	disney: /^disney(\+| plus)/,
-	appletv: /^apple tv( plus|\+)?$/
-};
 
 interface TmdbProvider {
 	provider_name: string;
@@ -35,7 +28,7 @@ export function servicesFromProviders(
 		const list = entry[category];
 		if (Array.isArray(list)) for (const p of list) names.push(p.provider_name.trim().toLowerCase());
 	}
-	const services = STREAMING_SERVICES.map((s) => s.id).filter((id) => names.some((n) => PATTERNS[id].test(n)));
+	const services = STREAMING_SERVICES.map((s) => s.id).filter((id) => names.some((n) => SERVICE_PATTERNS[id].test(n)));
 	const link =
 		typeof entry.link === 'string' && entry.link.startsWith('https://www.themoviedb.org/') ? entry.link : null;
 	return { services, link };
@@ -110,6 +103,14 @@ export async function setEnabledServices(db: DB, services: StreamingServiceId[])
 	await setSetting(db, 'streaming_services', JSON.stringify(services));
 }
 
+/**
+ * (work_id, service) pairs: per-title lookups for titles you own, plus every title in an imported service catalogue.
+ * 'streaming://' is 12 characters, so the service ID starts at character 13.
+ */
+export const AVAILABLE_SQL = `SELECT work_id, service FROM work_availability
+	UNION SELECT i.work_id, substr(s.base_url, 13) AS service FROM items i
+	JOIN libraries l ON l.id = i.library_id JOIN sources s ON s.id = l.source_id WHERE s.type = 'streaming'`;
+
 /** Enabled services each work is on. Services you have not ticked are hidden. */
 export async function availabilityFor(db: DB, workIds: number[]): Promise<Map<number, StreamingServiceId[]>> {
 	const map = new Map<number, StreamingServiceId[]>();
@@ -117,7 +118,7 @@ export async function availabilityFor(db: DB, workIds: number[]): Promise<Map<nu
 	if (!workIds.length || !enabled.length) return map;
 	const rows = await all<{ work_id: number; service: StreamingServiceId }>(
 		db,
-		`SELECT work_id, service FROM work_availability
+		`SELECT work_id, service FROM (${AVAILABLE_SQL})
 		WHERE work_id IN (${workIds.map(() => '?').join(',')}) AND service IN (${enabled.map(() => '?').join(',')})`,
 		[...workIds, ...enabled]
 	);
@@ -160,7 +161,10 @@ export interface RefreshResult {
 	error: string | null;
 }
 
-/** Look up subscription availability for works not checked recently in this region, finding TMDB IDs by title when missing. */
+/**
+ * Look up subscription availability for titles you own that were not checked recently in this region, finding TMDB IDs
+ * by title when missing. Titles that only come from an imported catalogue need no lookup.
+ */
 export async function refreshAvailability(db: DB, options: RefreshOptions): Promise<RefreshResult> {
 	const now = options.now ?? Date.now();
 	const fetchProviders = options.fetchProviders ?? fetchWatchProviders;
@@ -176,7 +180,10 @@ export async function refreshAvailability(db: DB, options: RefreshOptions): Prom
 	}>(
 		db,
 		`SELECT w.id, w.kind, w.title, w.year, w.external_ids_json, c.region, c.checked_at FROM works w
-		LEFT JOIN availability_checks c ON c.work_id = w.id WHERE w.kind IN ('movie', 'show')`
+		LEFT JOIN availability_checks c ON c.work_id = w.id WHERE w.kind IN ('movie', 'show') AND EXISTS (
+			SELECT 1 FROM items i JOIN libraries l ON l.id = i.library_id JOIN sources s ON s.id = l.source_id
+			WHERE i.work_id = w.id AND s.type != 'streaming'
+		)`
 	);
 
 	interface Job {

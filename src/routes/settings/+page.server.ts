@@ -11,15 +11,18 @@ import {
 	getSourceConfig,
 	listSources,
 	setCollection,
-	setSourceEnabled
+	setSourceEnabled,
+	syncStreamingSources
 } from '#lib/server/sources.ts';
 import { getEnabledServices, setEnabledServices } from '#lib/server/streaming.ts';
 import { parseCollectionText, parseSourceForm } from '#lib/server/validation.ts';
 import { STREAMING_SERVICES, type StreamingServiceId } from '#lib/types.ts';
 import type { Actions, PageServerLoad } from './$types';
 
-/** Leave room under the function time limit to send the response. */
-const REFRESH_BUDGET_MS = 40_000;
+/** Stop starting new work well inside the 300 second function limit, since one sync can take a while. */
+const REFRESH_BUDGET_MS = 200_000;
+/** No new catalogue import starts after this, leaving the rest of the limit for one large catalogue to finish. */
+const CATALOGUE_BUDGET_MS = 60_000;
 
 function types() {
 	return supportedSourceTypes(config.enableMockSources);
@@ -139,12 +142,38 @@ export const actions: Actions = {
 	},
 	saveStreaming: async ({ request }) => {
 		const known = STREAMING_SERVICES.map((service) => service.id) as string[];
-		const chosen = (await request.formData()).getAll('service').map(String);
-		await setEnabledServices(
-			await getDb(),
-			chosen.filter((id): id is StreamingServiceId => known.includes(id))
-		);
-		return { streaming: { notice: 'Saved.' } };
+		const chosen = (await request.formData())
+			.getAll('service')
+			.map(String)
+			.filter((id): id is StreamingServiceId => known.includes(id));
+		const db = await getDb();
+		await setEnabledServices(db, chosen);
+		const { added } = await syncStreamingSources(db, chosen);
+		if (!added.length) return { streaming: { notice: 'Saved.' } };
+		if (!config.tmdbToken)
+			return { streaming: { notice: 'Saved. Set TMDB_READ_TOKEN to import the service catalogues.' } };
+		const deadline = Date.now() + CATALOGUE_BUDGET_MS;
+		let imported = 0;
+		let titles = 0;
+		const errors: string[] = [];
+		// Smallest catalogues first (Apple TV+ has hundreds of titles, Prime Video tens of thousands), so one save imports
+		// as many services as possible before the budget runs out.
+		for (const id of [...added].reverse()) {
+			if (Date.now() >= deadline) break;
+			try {
+				titles += (await runSync(id)).items;
+				imported++;
+			} catch (err) {
+				errors.push(message(err));
+			}
+		}
+		const left = added.length - imported - errors.length;
+		const parts = [
+			`Saved. Imported ${titles} ${titles === 1 ? 'title' : 'titles'} from ${imported} of ${added.length} new services.`
+		];
+		if (left) parts.push(`${left} will import on the next scheduled run, or use Sync now.`);
+		if (errors.length) return fail(400, { streaming: { error: `${parts.join(' ')} ${errors[0]}` } });
+		return { streaming: { notice: parts.join(' ') } };
 	},
 	refreshStreaming: async () => {
 		if (!config.tmdbToken)

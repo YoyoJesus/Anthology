@@ -15,6 +15,7 @@
 		kodi: 'Kodi',
 		roms: 'Game ROMs',
 		collection: 'Digital collection',
+		streaming: 'Streaming catalogue',
 		mock: 'Sample data'
 	};
 
@@ -67,7 +68,7 @@
 							<SourceTag name={typeLabels[source.type]} type={source.type} />
 							{#if !source.enabled}<span class="text-xs text-faint">Paused</span>{/if}
 						</div>
-						{#if source.type !== 'collection'}
+						{#if source.type !== 'collection' && source.type !== 'streaming'}
 							<p class="mt-0.5 truncate font-mono text-xs text-faint">{source.baseUrl}</p>
 						{/if}
 						<p class="mt-1 text-sm text-muted">
@@ -138,23 +139,25 @@
 								<Icon name="power" />{source.enabled ? 'Pause' : 'Resume'}
 							</button>
 						</form>
-						<form
-							method="post"
-							action="?/remove"
-							use:enhance={({ cancel }) => {
-								if (!confirm(`Remove ${source.name}? Its items leave the library.`)) return cancel();
-								busy = `remove-${source.id}`;
-								return async ({ update }) => {
-									await update();
-									busy = null;
-								};
-							}}
-						>
-							<input type="hidden" name="id" value={source.id} />
-							<button class="btn btn-quiet hover:text-danger" disabled={busy !== null} title="Remove source">
-								<Icon name="trash-2" /><span class="sr-only">Remove {source.name}</span>
-							</button>
-						</form>
+						{#if source.type !== 'streaming'}
+							<form
+								method="post"
+								action="?/remove"
+								use:enhance={({ cancel }) => {
+									if (!confirm(`Remove ${source.name}? Its items leave the library.`)) return cancel();
+									busy = `remove-${source.id}`;
+									return async ({ update }) => {
+										await update();
+										busy = null;
+									};
+								}}
+							>
+								<input type="hidden" name="id" value={source.id} />
+								<button class="btn btn-quiet hover:text-danger" disabled={busy !== null} title="Remove source">
+									<Icon name="trash-2" /><span class="sr-only">Remove {source.name}</span>
+								</button>
+							</form>
+						{/if}
 					</div>
 				</li>
 			{/each}
@@ -253,9 +256,9 @@
 <section class="mt-12 max-w-xl" aria-labelledby="streaming-heading">
 	<h2 id="streaming-heading" class="text-lg font-medium">Streaming services</h2>
 	<p class="mt-1 text-sm text-muted">
-		Tick the services you subscribe to. Titles in your library that one of them streams in region {data.streaming
-			.region}
-		are marked, and you can filter by them.
+		Tick the services you subscribe to. Each one becomes a source with its full subscription catalogue for region {data
+			.streaming.region}, so you can browse and search everything you can stream. Titles you own are marked when a
+		service has them. Untick a service to remove its catalogue.
 	</p>
 
 	<form method="post" action="?/saveStreaming" class="mt-4" use:enhance={track('streaming')}>
@@ -300,8 +303,8 @@
 	<p class="mt-4 text-sm text-muted">
 		{#if data.streaming.configured}
 			{data.streaming.checked}
-			{data.streaming.checked === 1 ? 'title' : 'titles'} checked. The daily job checks new titles and rechecks the rest weekly.
-			Titles without a TMDB ID are found by title and year.
+			{data.streaming.checked === 1 ? 'title' : 'titles'} of your own checked. The scheduled job checks new titles you own
+			and rechecks the rest weekly. Titles without a TMDB ID are found by title and year.
 		{:else}
 			Set <code>TMDB_READ_TOKEN</code> to a TMDB API read access token to turn on lookups.
 		{/if}

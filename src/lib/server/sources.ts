@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import type { SourceSummary, SourceType } from '#lib/types.ts';
+import { STREAMING_SERVICES, type SourceSummary, type SourceType, type StreamingServiceId } from '#lib/types.ts';
+import { STREAMING_URL_PREFIX, serviceFromBaseUrl } from './adapters/streaming';
 import { config } from './config';
 import { decrypt, deriveKey, encrypt } from './crypto';
 import { all, get, run, writeBatch, type DB } from './db';
@@ -129,8 +130,9 @@ export const ORPHAN_CLEANUP = [
 	'DELETE FROM work_external_ids WHERE work_id NOT IN (SELECT id FROM works)',
 	'DELETE FROM work_availability WHERE work_id NOT IN (SELECT id FROM works)',
 	'DELETE FROM availability_checks WHERE work_id NOT IN (SELECT id FROM works)',
-	'DELETE FROM works_fts',
-	'INSERT INTO works_fts (rowid, title) SELECT id, title FROM works'
+	// Work titles never change after insert, so the search index only needs rows added and removed.
+	'DELETE FROM works_fts WHERE rowid NOT IN (SELECT id FROM works)',
+	'INSERT INTO works_fts (rowid, title) SELECT id, title FROM works WHERE id NOT IN (SELECT rowid FROM works_fts)'
 ];
 
 export async function deleteSource(db: DB, id: number): Promise<void> {
@@ -140,4 +142,38 @@ export async function deleteSource(db: DB, id: number): Promise<void> {
 		{ sql: 'DELETE FROM sources WHERE id = ?', args: [id] },
 		...ORPHAN_CLEANUP
 	]);
+}
+
+/** One streaming source per ticked service. Returns the IDs of sources it created. */
+export async function syncStreamingSources(
+	db: DB,
+	services: StreamingServiceId[],
+	key?: Buffer
+): Promise<{ added: number[]; removed: number }> {
+	const existing = await all<{ id: number; base_url: string }>(
+		db,
+		"SELECT id, base_url FROM sources WHERE type = 'streaming'"
+	);
+	const have = new Map<StreamingServiceId, number>();
+	let removed = 0;
+	for (const row of existing) {
+		const service = serviceFromBaseUrl(row.base_url);
+		if (service && services.includes(service) && !have.has(service)) have.set(service, Number(row.id));
+		else {
+			await deleteSource(db, Number(row.id));
+			removed++;
+		}
+	}
+	const added: number[] = [];
+	for (const service of STREAMING_SERVICES) {
+		if (!services.includes(service.id) || have.has(service.id)) continue;
+		const input = {
+			type: 'streaming' as const,
+			name: service.name,
+			baseUrl: `${STREAMING_URL_PREFIX}${service.id}`,
+			token: ''
+		};
+		added.push(key ? await createSource(db, input, key) : await createSource(db, input));
+	}
+	return { added, removed };
 }

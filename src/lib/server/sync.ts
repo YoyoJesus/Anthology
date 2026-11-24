@@ -153,6 +153,9 @@ async function upsertLibraries(db: DB, sourceId: number, libraries: Library[]): 
 	return ids;
 }
 
+const POSTER_SQL =
+	'SELECT i.id FROM items i WHERE i.work_id = works.id AND i.poster_url IS NOT NULL ORDER BY i.id LIMIT 1';
+
 export interface SyncResult {
 	libraries: number;
 	items: number;
@@ -216,9 +219,7 @@ export async function syncSource(db: DB, sourceId: number, adapter: SourceAdapte
 				args: [token, sourceId]
 			},
 			...ORPHAN_CLEANUP,
-			`UPDATE works SET canonical_poster = (
-				SELECT i.id FROM items i WHERE i.work_id = works.id AND i.poster_url IS NOT NULL ORDER BY i.id LIMIT 1
-			)`,
+			`UPDATE works SET canonical_poster = (${POSTER_SQL}) WHERE canonical_poster IS NOT (${POSTER_SQL})`,
 			{
 				sql: "UPDATE sources SET last_sync_at = datetime('now'), last_sync_error = NULL WHERE id = ?",
 				args: [sourceId]

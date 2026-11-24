@@ -10,6 +10,7 @@
 		kodi: 'bg-src-kodi',
 		roms: 'bg-src-roms',
 		collection: 'bg-src-collection',
+		streaming: 'bg-src-streaming',
 		mock: 'bg-src-mock'
 	};
 </script>

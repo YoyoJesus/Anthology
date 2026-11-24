@@ -37,7 +37,9 @@ export function servicesFromProviders(
 		if (Array.isArray(list)) for (const p of list) names.push(p.provider_name.trim().toLowerCase());
 	}
 	const services = STREAMING_SERVICES.map((s) => s.id).filter((id) => names.some((n) => PATTERNS[id].test(n)));
-	return { services, link: typeof entry.link === 'string' ? entry.link : null };
+	const link =
+		typeof entry.link === 'string' && entry.link.startsWith('https://www.themoviedb.org/') ? entry.link : null;
+	return { services, link };
 }
 
 export async function fetchWatchProviders(

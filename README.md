@@ -48,8 +48,8 @@ Anthology runs on Vercel with a [Turso](https://turso.tech) database (hosted lib
 
 | Variable                | Required | Purpose                                                                     |
 | ----------------------- | -------- | --------------------------------------------------------------------------- |
-| `DATABASE_URL`          | Yes      | The `libsql://` URL from Turso                                              |
-| `DATABASE_AUTH_TOKEN`   | Yes      | The Turso database token                                                    |
+| `TURSO_DATABASE_URL`    | Yes      | The `libsql://` URL from Turso                                              |
+| `TURSO_AUTH_TOKEN`      | Yes      | The Turso database token                                                    |
 | `ADMIN_PASSWORD`        | Yes      | Admin password. First-run setup is turned off on Vercel                     |
 | `SECRET_KEY`            | Yes      | Encrypts source credentials. Changing it makes saved credentials unreadable |
 | `CRON_SECRET`           | Yes      | Protects `/api/cron`. Vercel sends it with its scheduled requests           |
@@ -67,7 +67,7 @@ Limits on Vercel:
 
 ## Run as a Node server
 
-`npm run build` outside Vercel produces a Node server in `build/` (`node build`). It uses a local SQLite file unless `DATABASE_URL` is set, and runs scheduled syncs itself. The `Dockerfile` and `compose.example.yaml` package this for Docker hosts such as Dokploy. Set `ORIGIN` to the public URL behind a reverse proxy, and back up the data volume. Point sources at addresses the container can reach, for example `http://192.168.1.10:8096` for Jellyfin or `http://192.168.1.10:32400` for Plex. Jellyfin needs an API key from its dashboard. Plex needs an `X-Plex-Token`.
+`npm run build` outside Vercel produces a Node server in `build/` (`node build`). It uses a local SQLite file unless `TURSO_DATABASE_URL` is set, and runs scheduled syncs itself. The `Dockerfile` and `compose.example.yaml` package this for Docker hosts such as Dokploy. Set `ORIGIN` to the public URL behind a reverse proxy, and back up the data volume. Point sources at addresses the container can reach, for example `http://192.168.1.10:8096` for Jellyfin or `http://192.168.1.10:32400` for Plex. Jellyfin needs an API key from its dashboard. Plex needs an `X-Plex-Token`.
 
 ### Digital collections
 

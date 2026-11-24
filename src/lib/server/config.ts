@@ -22,8 +22,8 @@ export interface Config {
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
 	const dataDir = path.resolve(env.DATA_DIR || './data');
 	return {
-		databaseUrl: env.DATABASE_URL || `file:${path.join(dataDir, 'anthology.db')}`,
-		databaseAuthToken: env.DATABASE_AUTH_TOKEN || undefined,
+		databaseUrl: env.TURSO_DATABASE_URL || env.DATABASE_URL || `file:${path.join(dataDir, 'anthology.db')}`,
+		databaseAuthToken: env.TURSO_AUTH_TOKEN || env.DATABASE_AUTH_TOKEN || undefined,
 		dataDir,
 		adminPassword: env.ADMIN_PASSWORD || undefined,
 		secretKey: env.SECRET_KEY || undefined,

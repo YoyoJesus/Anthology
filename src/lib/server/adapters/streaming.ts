@@ -1,4 +1,5 @@
 import { STREAMING_SERVICES, type MediaKind, type StreamingServiceId } from '#lib/types.ts';
+import { genresFromTmdb } from '#lib/genres.ts';
 import { serviceSearchUrl } from '#lib/service-links.ts';
 import { config } from '../config';
 import type { Library, RawItem, SourceAdapter, SourceConfig } from './types';
@@ -44,6 +45,9 @@ interface DiscoverResult {
 	release_date?: string;
 	first_air_date?: string;
 	poster_path?: string | null;
+	vote_average?: number;
+	vote_count?: number;
+	genre_ids?: number[];
 }
 
 interface DiscoverPage {
@@ -176,7 +180,12 @@ export function createStreamingAdapter(
 					externalIds: { tmdb: String(result.id) },
 					posterRef: result.poster_path && TMDB_POSTER_PATH.test(result.poster_path) ? result.poster_path : null,
 					addedAt: null,
-					updatedAt: null
+					updatedAt: null,
+					rating:
+						typeof result.vote_average === 'number'
+							? { average: result.vote_average, votes: result.vote_count ?? 0 }
+							: null,
+					genres: genresFromTmdb(result.genre_ids)
 				};
 				yield item;
 			}

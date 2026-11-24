@@ -3,6 +3,7 @@ import type { ExternalIds, MediaKind } from '#lib/types.ts';
 import { all, run, writeBatch, type DB } from './db';
 import type { Library, RawItem, SourceAdapter } from './adapters/types';
 import { idsConflict, matchKey, normalizeTitle, parseIds } from './matcher';
+import { metadataStatements, type WorkMetadata } from './metadata';
 import { ORPHAN_CLEANUP } from './sources';
 import { randomToken } from './crypto';
 
@@ -187,6 +188,7 @@ export async function syncSource(db: DB, sourceId: number, adapter: SourceAdapte
 		}
 
 		let count = 0;
+		const metadata: WorkMetadata[] = [];
 		for (const library of libraries) {
 			const libraryId = libraryIds.get(library.remoteId)!;
 			for await (const raw of adapter.fetchItems(library)) {
@@ -208,12 +210,20 @@ export async function syncSource(db: DB, sourceId: number, adapter: SourceAdapte
 						token
 					]
 				});
+				if (raw.rating || raw.genres?.length)
+					metadata.push({
+						workId,
+						rating: raw.rating?.average ?? null,
+						votes: raw.rating?.votes ?? 0,
+						genres: raw.genres ?? []
+					});
 				count++;
 			}
 		}
 
 		await writeBatch(db, [
 			...index.statements,
+			...metadataStatements(metadata),
 			{
 				sql: `DELETE FROM items WHERE sync_token IS NOT ? AND library_id IN (SELECT id FROM libraries WHERE source_id = ?)`,
 				args: [token, sourceId]

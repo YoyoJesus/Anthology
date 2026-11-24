@@ -136,7 +136,14 @@ describe('collection posters', () => {
 			token: 't',
 			region: 'US',
 			fetchProviders: async () => ({}),
-			searchTitle: async () => ({ id: '4242', posterPath: '/shelf.jpg' })
+			searchTitle: async () => ({
+				id: '4242',
+				posterPath: '/shelf.jpg',
+				rating: 8.1,
+				votes: 300,
+				genres: ['comedy' as const]
+			}),
+			fetchDetails: async () => null
 		});
 		expect((await browseWorks(db, {})).works[0].posterUrl).toBe('/posters/tmdb/shelf.jpg');
 	});
@@ -152,18 +159,18 @@ describe('poster backfill', () => {
 			token: 't',
 			region: 'US',
 			fetchProviders: async () => ({}),
-			searchTitle: async () => ({ id: '4242', posterPath: null })
+			searchTitle: async () => ({ id: '4242', posterPath: null, rating: null, votes: 0, genres: [] })
 		};
 		await refreshAvailability(db, {
 			...options,
-			fetchPosterPath: async () => {
+			fetchDetails: async () => {
 				throw new Error('offline');
 			}
 		});
 		expect((await browseWorks(db, {})).works[0].posterUrl).toBeNull();
-		const posterPath = vi.fn(async () => '/late.jpg');
-		await refreshAvailability(db, { ...options, fetchPosterPath: posterPath });
-		await refreshAvailability(db, { ...options, fetchPosterPath: posterPath });
+		const posterPath = vi.fn(async () => ({ posterPath: '/late.jpg', rating: 6.9, votes: 40, genres: [] }));
+		await refreshAvailability(db, { ...options, fetchDetails: posterPath });
+		await refreshAvailability(db, { ...options, fetchDetails: posterPath });
 		expect(posterPath).toHaveBeenCalledTimes(1);
 		expect((await browseWorks(db, {})).works[0].posterUrl).toBe('/posters/tmdb/late.jpg');
 	});

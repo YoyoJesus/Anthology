@@ -93,6 +93,20 @@ CREATE TABLE IF NOT EXISTS work_availability (
 	PRIMARY KEY (work_id, service)
 );
 
+-- Audience ratings (TMDB, out of 10) and genres, for sorting and filtering.
+CREATE TABLE IF NOT EXISTS work_ratings (
+	work_id INTEGER PRIMARY KEY REFERENCES works(id) ON DELETE CASCADE,
+	rating REAL,
+	votes INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS work_genres (
+	work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+	genre TEXT NOT NULL,
+	PRIMARY KEY (work_id, genre)
+);
+CREATE INDEX IF NOT EXISTS work_genres_genre ON work_genres (genre);
+
 -- TMDB poster paths for works that came without artwork, such as digital collection titles.
 CREATE TABLE IF NOT EXISTS work_posters (
 	work_id INTEGER PRIMARY KEY REFERENCES works(id) ON DELETE CASCADE,

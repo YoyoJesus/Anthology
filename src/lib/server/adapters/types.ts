@@ -1,3 +1,4 @@
+import type { GenreId } from '#lib/genres.ts';
 import type { ExternalIds, MediaKind, SourceType } from '#lib/types.ts';
 
 export interface Library {
@@ -15,6 +16,9 @@ export interface RawItem {
 	posterRef: string | null;
 	addedAt: string | null;
 	updatedAt: string | null;
+	/** Audience rating out of 10, when the source has one. */
+	rating?: { average: number; votes: number } | null;
+	genres?: GenreId[];
 }
 
 export interface SourceConfig {

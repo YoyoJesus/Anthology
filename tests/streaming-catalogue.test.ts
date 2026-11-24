@@ -155,7 +155,13 @@ describe('streaming sources', () => {
 		expect(netflixItem.linkUrl).toBe('https://www.netflix.com/search?q=Harbor%20Lights');
 
 		const lookups = vi.fn(async (_kind: 'movie' | 'tv', _id: string) => ({}));
-		await refreshAvailability(db, { token: 't', region: 'US', fetchProviders: lookups, searchTitle: async () => null });
+		await refreshAvailability(db, {
+			token: 't',
+			region: 'US',
+			fetchProviders: lookups,
+			searchTitle: async () => null,
+			fetchDetails: async () => null
+		});
 		const lookedUp = lookups.mock.calls.map((call) => String(call[1]));
 		expect(lookedUp).not.toContain('555');
 		const ownedWithTmdb = await all<{ n: number }>(

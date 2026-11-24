@@ -1,7 +1,9 @@
+import { genresFromTmdb, type GenreId } from '#lib/genres.ts';
 import { STREAMING_SERVICES, type StreamingServiceId } from '#lib/types.ts';
 import { all, get, getSetting, setSetting, type DB } from './db';
 import { SERVICE_PATTERNS, TMDB_POSTER_PATH } from './adapters/streaming';
 import { normalizeTitle, parseIds } from './matcher';
+import { metadataStatements } from './metadata';
 
 const TMDB_API = 'https://api.themoviedb.org/3';
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -57,6 +59,9 @@ interface TmdbSearchResult {
 	original_name?: string;
 	first_air_date?: string;
 	poster_path?: string | null;
+	vote_average?: number;
+	vote_count?: number;
+	genre_ids?: number[];
 }
 
 /** First result whose title matches exactly and whose year is within one of ours (when we know it). */
@@ -72,10 +77,18 @@ export function pickSearchResult(results: TmdbSearchResult[], title: string, yea
 	return null;
 }
 
-export interface SearchMatch {
-	id: string;
+export interface TitleDetails {
 	posterPath: string | null;
+	rating: number | null;
+	votes: number;
+	genres: GenreId[];
 }
+
+export interface SearchMatch extends TitleDetails {
+	id: string;
+}
+
+const posterOrNull = (path: string | null | undefined) => (path && TMDB_POSTER_PATH.test(path) ? path : null);
 
 /** Finds a TMDB ID and poster for titles that came without one, such as digital collection entries. */
 export async function searchTmdbId(
@@ -94,8 +107,14 @@ export async function searchTmdbId(
 	const results = ((await res.json()) as { results?: TmdbSearchResult[] }).results ?? [];
 	const id = pickSearchResult(results, title, year);
 	if (!id) return null;
-	const poster = results.find((r) => String(r.id) === id)?.poster_path;
-	return { id, posterPath: poster && TMDB_POSTER_PATH.test(poster) ? poster : null };
+	const match = results.find((r) => String(r.id) === id)!;
+	return {
+		id,
+		posterPath: posterOrNull(match.poster_path),
+		rating: typeof match.vote_average === 'number' ? match.vote_average : null,
+		votes: match.vote_count ?? 0,
+		genres: genresFromTmdb(match.genre_ids)
+	};
 }
 
 export async function getEnabledServices(db: DB): Promise<StreamingServiceId[]> {
@@ -149,16 +168,26 @@ export async function availabilityLink(db: DB, workId: number): Promise<string |
 	);
 }
 
-/** Poster path for a known TMDB ID, for titles that were matched before posters were stored. */
-export async function fetchPosterPath(kind: 'movie' | 'tv', tmdbId: string, token: string): Promise<string | null> {
+/** Poster, rating and genres for a known TMDB ID, for titles matched before these were stored. */
+export async function fetchDetails(kind: 'movie' | 'tv', tmdbId: string, token: string): Promise<TitleDetails | null> {
 	const res = await fetch(`${TMDB_API}/${kind}/${encodeURIComponent(tmdbId)}`, {
 		headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
 		signal: AbortSignal.timeout(15_000)
 	});
 	if (res.status === 401) throw new Error('TMDB rejected the read access token');
 	if (!res.ok) return null;
-	const path = ((await res.json()) as { poster_path?: string | null }).poster_path;
-	return path && TMDB_POSTER_PATH.test(path) ? path : null;
+	const body = (await res.json()) as {
+		poster_path?: string | null;
+		vote_average?: number;
+		vote_count?: number;
+		genres?: { id: number }[];
+	};
+	return {
+		posterPath: posterOrNull(body.poster_path),
+		rating: typeof body.vote_average === 'number' ? body.vote_average : null,
+		votes: body.vote_count ?? 0,
+		genres: genresFromTmdb(body.genres?.map((g) => g.id))
+	};
 }
 
 export interface RefreshOptions {
@@ -171,7 +200,7 @@ export interface RefreshOptions {
 	deadline?: number;
 	fetchProviders?: typeof fetchWatchProviders;
 	searchTitle?: typeof searchTmdbId;
-	fetchPosterPath?: typeof fetchPosterPath;
+	fetchDetails?: typeof fetchDetails;
 }
 
 export interface RefreshResult {
@@ -275,6 +304,9 @@ export async function refreshAvailability(db: DB, options: RefreshOptions): Prom
 								sql: 'UPDATE works SET external_ids_json = ? WHERE id = ?',
 								args: [JSON.stringify({ ...next.ids, tmdb: tmdbId }), next.id]
 							},
+							...metadataStatements([
+								{ workId: next.id, rating: match.rating, votes: match.votes, genres: match.genres }
+							]),
 							...(match.posterPath
 								? [
 										{
@@ -300,33 +332,49 @@ export async function refreshAvailability(db: DB, options: RefreshOptions): Prom
 	};
 	await Promise.all(Array.from({ length: options.concurrency ?? 4 }, worker));
 
-	// Titles you own with a TMDB ID but no artwork of their own. An empty path records that TMDB has none.
-	const posterless = await all<{ id: number; kind: 'movie' | 'show'; external_ids_json: string }>(
+	// Titles you own with a TMDB ID that still lack a rating, or artwork of any kind. Each is looked up once: a rating
+	// row (even an empty one) marks it done, and an empty poster path records that TMDB has none.
+	const incomplete = await all<{ id: number; kind: 'movie' | 'show'; external_ids_json: string; needs_poster: number }>(
 		db,
-		`SELECT w.id, w.kind, w.external_ids_json FROM works w WHERE w.kind IN ('movie', 'show')
-		AND w.canonical_poster IS NULL AND w.id NOT IN (SELECT work_id FROM work_posters) AND EXISTS (
+		`SELECT w.id, w.kind, w.external_ids_json,
+			(w.canonical_poster IS NULL AND w.id NOT IN (SELECT work_id FROM work_posters)) AS needs_poster
+		FROM works w WHERE w.kind IN ('movie', 'show') AND EXISTS (
 			SELECT 1 FROM items i JOIN libraries l ON l.id = i.library_id JOIN sources s ON s.id = l.source_id
 			WHERE i.work_id = w.id AND s.type != 'streaming'
-		)`
+		) AND (w.id NOT IN (SELECT work_id FROM work_ratings)
+			OR (w.canonical_poster IS NULL AND w.id NOT IN (SELECT work_id FROM work_posters)))`
 	);
-	const getPoster = options.fetchPosterPath ?? fetchPosterPath;
-	const posterWorker = async () => {
+	const getDetails = options.fetchDetails ?? fetchDetails;
+	const detailsWorker = async () => {
 		while (!error && !outOfTime()) {
-			const work = posterless.shift();
+			const work = incomplete.shift();
 			if (!work) return;
 			const tmdbId = parseIds(work.external_ids_json).tmdb;
 			if (!tmdbId) continue;
 			try {
-				const path = await getPoster(work.kind === 'show' ? 'tv' : 'movie', tmdbId, options.token);
-				await db.execute({
-					sql: 'INSERT INTO work_posters (work_id, path) VALUES (?, ?) ON CONFLICT(work_id) DO UPDATE SET path = excluded.path',
-					args: [Number(work.id), path ?? '']
-				});
+				const details = await getDetails(work.kind === 'show' ? 'tv' : 'movie', tmdbId, options.token);
+				const workId = Number(work.id);
+				await db.batch(
+					[
+						...metadataStatements([
+							{ workId, rating: details?.rating ?? null, votes: details?.votes ?? 0, genres: details?.genres ?? [] }
+						]),
+						...(Number(work.needs_poster)
+							? [
+									{
+										sql: 'INSERT INTO work_posters (work_id, path) VALUES (?, ?) ON CONFLICT(work_id) DO UPDATE SET path = excluded.path',
+										args: [workId, details?.posterPath ?? '']
+									}
+								]
+							: [])
+					],
+					'write'
+				);
 			} catch (err) {
 				if (err instanceof Error && err.message.includes('rejected')) error = err.message;
 			}
 		}
 	};
-	await Promise.all(Array.from({ length: options.concurrency ?? 4 }, posterWorker));
+	await Promise.all(Array.from({ length: options.concurrency ?? 4 }, detailsWorker));
 	return { checked, skipped, failed, remaining: queue.length, error };
 }

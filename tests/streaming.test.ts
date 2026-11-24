@@ -54,6 +54,7 @@ async function syncedDb() {
 
 const netflixEverywhere = vi.fn(async () => ({ results: { US: { flatrate: [provider('Netflix')] } } }));
 const noMatch = vi.fn(async () => null);
+const noDetails = vi.fn(async () => null);
 
 describe('refreshAvailability', () => {
 	it('checks works with a TMDB ID and skips fresh ones', async () => {
@@ -63,6 +64,7 @@ describe('refreshAvailability', () => {
 			region: 'US',
 			fetchProviders: netflixEverywhere,
 			searchTitle: noMatch,
+			fetchDetails: noDetails,
 			now: 1000
 		});
 		expect(first.checked).toBeGreaterThan(0);
@@ -72,6 +74,7 @@ describe('refreshAvailability', () => {
 			region: 'US',
 			fetchProviders: netflixEverywhere,
 			searchTitle: noMatch,
+			fetchDetails: noDetails,
 			now: 2000
 		});
 		expect(second.checked).toBe(0);
@@ -80,6 +83,7 @@ describe('refreshAvailability', () => {
 			region: 'GB',
 			fetchProviders: netflixEverywhere,
 			searchTitle: noMatch,
+			fetchDetails: noDetails,
 			now: 2000
 		});
 		expect(otherRegion.checked).toBe(first.checked);
@@ -91,7 +95,8 @@ describe('refreshAvailability', () => {
 			token: 't',
 			region: 'US',
 			fetchProviders: netflixEverywhere,
-			searchTitle: noMatch
+			searchTitle: noMatch,
+			fetchDetails: noDetails
 		});
 		expect((await browseWorks(db, { streaming: 'any' })).total).toBe(0);
 		await setEnabledServices(db, ['netflix']);
@@ -108,6 +113,7 @@ describe('refreshAvailability', () => {
 			region: 'US',
 			fetchProviders: netflixEverywhere,
 			searchTitle: noMatch,
+			fetchDetails: noDetails,
 			deadline: Date.now() - 1
 		});
 		expect(result.checked).toBe(0);
@@ -124,6 +130,7 @@ describe('refreshAvailability', () => {
 			region: 'US',
 			fetchProviders: rejected,
 			searchTitle: noMatch,
+			fetchDetails: noDetails,
 			concurrency: 1
 		});
 		expect(result.error).toBe('TMDB rejected the read access token');
@@ -159,7 +166,9 @@ describe('refreshAvailability title search', () => {
 	it('finds missing TMDB IDs by title, stores them and skips titles with no match', async () => {
 		const db = await syncedDb();
 		const search = vi.fn(async (_kind: 'movie' | 'tv', title: string) =>
-			title === 'Northbound' ? { id: '777', posterPath: '/p777.jpg' } : null
+			title === 'Northbound'
+				? { id: '777', posterPath: '/p777.jpg', rating: 7.5, votes: 120, genres: ['drama' as const] }
+				: null
 		);
 		const lookups: string[] = [];
 		const fetchProviders = vi.fn(async (_kind: 'movie' | 'tv', id: string) => {
@@ -171,7 +180,13 @@ describe('refreshAvailability title search', () => {
 			'SELECT title, external_ids_json FROM works'
 		);
 		const missing = before.filter((w) => !JSON.parse(w.external_ids_json).tmdb);
-		const result = await refreshAvailability(db, { token: 't', region: 'US', fetchProviders, searchTitle: search });
+		const result = await refreshAvailability(db, {
+			token: 't',
+			region: 'US',
+			fetchProviders,
+			searchTitle: search,
+			fetchDetails: noDetails
+		});
 		expect(search).toHaveBeenCalledTimes(missing.length);
 		expect(result.skipped).toBe(missing.filter((w) => w.title !== 'Northbound').length);
 		expect(result.checked + result.skipped).toBe(before.length);
@@ -188,7 +203,13 @@ describe('refreshAvailability title search', () => {
 		expect(stored.map((r) => r.path)).toEqual(['/p777.jpg']);
 		// The source's own artwork still wins over the TMDB poster.
 		expect((await browseWorks(db, { q: 'Northbound' })).works[0].posterUrl).toMatch(/^\/posters\/\d+$/);
-		const again = await refreshAvailability(db, { token: 't', region: 'US', fetchProviders, searchTitle: search });
+		const again = await refreshAvailability(db, {
+			token: 't',
+			region: 'US',
+			fetchProviders,
+			searchTitle: search,
+			fetchDetails: noDetails
+		});
 		expect(again.checked + again.skipped).toBe(0);
 	});
 });

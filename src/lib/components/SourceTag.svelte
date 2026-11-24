@@ -9,6 +9,7 @@
 		navidrome: 'bg-src-navidrome',
 		kodi: 'bg-src-kodi',
 		roms: 'bg-src-roms',
+		collection: 'bg-src-collection',
 		mock: 'bg-src-mock'
 	};
 </script>

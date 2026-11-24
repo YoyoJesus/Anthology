@@ -20,6 +20,7 @@
 	--color-src-navidrome: #4fa3e0;
 	--color-src-kodi: #2fb5d9;
 	--color-src-roms: #d36ea0;
+	--color-src-collection: #c9b38a;
 	--color-src-mock: #8bb0a8;
 }
 
@@ -34,7 +35,8 @@
 		@apply outline-2 outline-offset-2 outline-accent;
 	}
 	input,
-	select {
+	select,
+	textarea {
 		@apply rounded-md border border-line bg-raised px-3 py-2 text-sm text-ink placeholder:text-faint;
 	}
 }

@@ -44,14 +44,18 @@
 							{#if item.title !== work.title}<span class="text-faint"> · listed as “{item.title}”</span>{/if}
 						</p>
 					</div>
-					<a href={item.linkUrl} target="_blank" rel="noopener noreferrer" class="btn">
-						Open in {item.sourceType === 'plex'
-							? 'Plex'
-							: item.sourceType === 'jellyfin'
-								? 'Jellyfin'
-								: item.sourceName}
-						<Icon name="external-link" />
-					</a>
+					{#if item.linkUrl}
+						<a href={item.linkUrl} target="_blank" rel="noopener noreferrer" class="btn">
+							Open in {item.sourceType === 'plex'
+								? 'Plex'
+								: item.sourceType === 'jellyfin'
+									? 'Jellyfin'
+									: item.sourceName}
+							<Icon name="external-link" />
+						</a>
+					{:else}
+						<span class="text-sm text-muted">In your collection</span>
+					{/if}
 				</li>
 			{/each}
 		</ul>

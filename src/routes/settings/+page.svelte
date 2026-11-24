@@ -14,6 +14,7 @@
 		navidrome: 'Navidrome',
 		kodi: 'Kodi',
 		roms: 'Game ROMs',
+		collection: 'Digital collection',
 		mock: 'Sample data'
 	};
 
@@ -66,7 +67,9 @@
 							<SourceTag name={typeLabels[source.type]} type={source.type} />
 							{#if !source.enabled}<span class="text-xs text-faint">Paused</span>{/if}
 						</div>
-						<p class="mt-0.5 truncate font-mono text-xs text-faint">{source.baseUrl}</p>
+						{#if source.type !== 'collection'}
+							<p class="mt-0.5 truncate font-mono text-xs text-faint">{source.baseUrl}</p>
+						{/if}
 						<p class="mt-1 text-sm text-muted">
 							{source.itemCount}
 							{source.itemCount === 1 ? 'item' : 'items'} in {source.libraryCount}
@@ -85,6 +88,26 @@
 								<Icon name="circle-alert" />Last sync failed: {source.lastSyncError}
 							</p>
 						{/if}
+						{#if source.collection !== null}
+							<details class="mt-2">
+								<summary class="cursor-pointer text-sm text-accent hover:underline">Edit list</summary>
+								<form
+									method="post"
+									action="?/updateCollection"
+									class="mt-2 grid max-w-xl gap-2"
+									use:enhance={track(`collection-${source.id}`)}
+								>
+									<input type="hidden" name="id" value={source.id} />
+									<label>
+										<span class="sr-only">Titles in {source.name}</span>
+										<textarea name="collection" rows="8" class="w-full font-mono text-xs" spellcheck="false"
+											>{source.collection}</textarea
+										>
+									</label>
+									<div><button class="btn" disabled={busy !== null}>Save list</button></div>
+								</form>
+							</details>
+						{/if}
 					</div>
 
 					<div class="flex flex-wrap items-center gap-2">
@@ -98,10 +121,12 @@
 								{busy === `sync-${source.id}` || source.syncing ? 'Syncing' : 'Sync now'}
 							</button>
 						</form>
-						<form method="post" action="?/test" use:enhance={track(`test-${source.id}`)}>
-							<input type="hidden" name="id" value={source.id} />
-							<button class="btn" disabled={busy !== null}><Icon name="plug-zap" />Test</button>
-						</form>
+						{#if source.type !== 'collection'}
+							<form method="post" action="?/test" use:enhance={track(`test-${source.id}`)}>
+								<input type="hidden" name="id" value={source.id} />
+								<button class="btn" disabled={busy !== null}><Icon name="plug-zap" />Test</button>
+							</form>
+						{/if}
 						<form method="post" action="?/toggle" use:enhance={track(`toggle-${source.id}`)}>
 							<input type="hidden" name="id" value={source.id} />
 							<input type="hidden" name="enabled" value={String(!source.enabled)} />
@@ -152,40 +177,64 @@
 		</label>
 		<label class="grid gap-1.5">
 			<span class="label">Name</span>
-			<input name="name" required maxlength="60" placeholder="Living room {typeLabels[type]}" />
+			<input
+				name="name"
+				required
+				maxlength="60"
+				placeholder={type === 'collection' ? 'Apple TV purchases' : `Living room ${typeLabels[type]}`}
+			/>
 		</label>
-		{#if type !== 'mock'}
+		{#if type === 'collection'}
+			<label class="grid gap-1.5">
+				<span class="label">Titles</span>
+				<textarea
+					name="collection"
+					rows="10"
+					required
+					spellcheck="false"
+					class="font-mono text-xs"
+					placeholder={'The Glass Orchard (2019)\nHarbor Lights (2021)\nTV: Low Tide Club'}></textarea>
+				<span class="text-xs text-faint">
+					One per line as Title (Year). Start a line with TV: for a show. The year is optional but makes matching more
+					reliable. Lines starting with # are ignored.
+				</span>
+			</label>
+		{:else if type !== 'mock'}
 			<label class="grid gap-1.5">
 				<span class="label">Server URL</span>
 				<input name="baseUrl" type="url" required placeholder={placeholders[type]} />
 			</label>
 		{/if}
-		<label class="grid gap-1.5">
-			<span class="label">{type === 'plex' ? 'Plex token' : type === 'mock' ? 'Dataset' : 'API key'}</span>
-			{#if type === 'mock'}
-				<select name="token">
-					<option value="alpha">Alpha</option>
-					<option value="beta">Beta</option>
-				</select>
-			{:else}
-				<input name="token" type="password" required autocomplete="off" spellcheck="false" />
-			{/if}
-			<span class="text-xs text-faint">
-				{#if type === 'plex'}
-					In Plex Web, open any item, choose Get Info, then View XML. The token is the X-Plex-Token value in the address
-					bar.
-				{:else if type === 'jellyfin'}
-					Create one in the Jellyfin dashboard under API Keys.
+		{#if type !== 'collection'}
+			<label class="grid gap-1.5">
+				<span class="label">{type === 'plex' ? 'Plex token' : type === 'mock' ? 'Dataset' : 'API key'}</span>
+				{#if type === 'mock'}
+					<select name="token">
+						<option value="alpha">Alpha</option>
+						<option value="beta">Beta</option>
+					</select>
 				{:else}
-					Two overlapping sample libraries for trying out matching without a real server.
+					<input name="token" type="password" required autocomplete="off" spellcheck="false" />
 				{/if}
-			</span>
-		</label>
+				<span class="text-xs text-faint">
+					{#if type === 'plex'}
+						In Plex Web, open any item, choose Get Info, then View XML. The token is the X-Plex-Token value in the
+						address bar.
+					{:else if type === 'jellyfin'}
+						Create one in the Jellyfin dashboard under API Keys.
+					{:else}
+						Two overlapping sample libraries for trying out matching without a real server.
+					{/if}
+				</span>
+			</label>
+		{/if}
 
 		{#if addResult && 'error' in addResult}
 			<p class="flex items-center gap-1.5 text-sm text-danger" role="alert">
 				<Icon name="circle-alert" />{addResult.error}
 			</p>
+		{:else if addResult && 'notice' in addResult}
+			<p class="flex items-center gap-1.5 text-sm text-ok"><Icon name="circle-check" />{addResult.notice}</p>
 		{:else if addResult && 'tested' in addResult}
 			<p class="flex items-center gap-1.5 text-sm text-ok">
 				<Icon name="circle-check" />Connected to {addResult.name}.
@@ -195,7 +244,7 @@
 		<div class="flex gap-2">
 			<button class="btn btn-primary" disabled={busy !== null}><Icon name="plus" />Add source</button>
 			<button class="btn" formaction="?/testNew" disabled={busy !== null}>
-				<Icon name="plug-zap" />Test connection
+				<Icon name="plug-zap" />{type === 'collection' ? 'Check list' : 'Test connection'}
 			</button>
 		</div>
 	</form>

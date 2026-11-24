@@ -4,9 +4,18 @@ import { config } from '#lib/server/config.ts';
 import { getDb } from '#lib/server/db.ts';
 import { isRefreshingAvailability, isSyncing, runAvailabilityRefresh, runSync } from '#lib/server/jobs.ts';
 import { PosterCache } from '#lib/server/posters.ts';
-import { createSource, deleteSource, getSourceConfig, listSources, setSourceEnabled } from '#lib/server/sources.ts';
+import { parseCollection } from '#lib/server/adapters/collection.ts';
+import {
+	createSource,
+	deleteSource,
+	getCollection,
+	getSourceConfig,
+	listSources,
+	setCollection,
+	setSourceEnabled
+} from '#lib/server/sources.ts';
 import { getEnabledServices, setEnabledServices } from '#lib/server/streaming.ts';
-import { parseSourceForm } from '#lib/server/validation.ts';
+import { parseCollectionText, parseSourceForm } from '#lib/server/validation.ts';
 import { STREAMING_SERVICES, type StreamingServiceId } from '#lib/types.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -30,7 +39,11 @@ export const load: PageServerLoad = () => {
 		n: number;
 	};
 	return {
-		sources: listSources(db).map((source) => ({ ...source, syncing: isSyncing(source.id) })),
+		sources: listSources(db).map((source) => ({
+			...source,
+			syncing: isSyncing(source.id),
+			collection: source.type === 'collection' ? getCollection(db, source.id) : null
+		})),
 		types: types(),
 		streaming: {
 			enabled: getEnabledServices(db),
@@ -46,6 +59,13 @@ export const actions: Actions = {
 	testNew: async ({ request }) => {
 		const parsed = parseSourceForm(await request.formData(), types());
 		if (!parsed.ok) return fail(400, { add: { error: parsed.error } });
+		if (parsed.value.type === 'collection') {
+			const { entries, skipped } = parseCollection(parsed.value.collection ?? '');
+			const skippedNote = skipped.length
+				? ` Skipped line ${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? '…' : ''}.`
+				: '';
+			return { add: { notice: `Read ${entries.length} ${entries.length === 1 ? 'title' : 'titles'}.${skippedNote}` } };
+		}
 		try {
 			await createAdapter({ id: 0, ...parsed.value }).testConnection();
 			return { add: { tested: true, name: parsed.value.name } };
@@ -57,6 +77,11 @@ export const actions: Actions = {
 		const parsed = parseSourceForm(await request.formData(), types());
 		if (!parsed.ok) return fail(400, { add: { error: parsed.error } });
 		const id = createSource(getDb(), parsed.value);
+		if (parsed.value.type === 'collection') {
+			const result = await runSync(id).catch(() => null);
+			if (result)
+				return { add: { created: id, notice: `Added ${result.items} ${result.items === 1 ? 'title' : 'titles'}.` } };
+		}
 		return { add: { created: id } };
 	},
 	test: async ({ request }) => {
@@ -87,6 +112,24 @@ export const actions: Actions = {
 	toggle: async ({ request }) => {
 		const data = await request.formData();
 		setSourceEnabled(getDb(), Number(data.get('id')), data.get('enabled') === 'true');
+	},
+	updateCollection: async ({ request }) => {
+		const data = await request.formData();
+		const id = Number(data.get('id'));
+		const db = getDb();
+		if (getSourceConfig(db, id)?.type !== 'collection')
+			return fail(404, { row: { id, error: 'Collection not found' } });
+		const parsed = parseCollectionText(data.get('collection'));
+		if (!parsed.ok) return fail(400, { row: { id, error: parsed.error } });
+		setCollection(db, id, parsed.value);
+		try {
+			const result = await runSync(id);
+			return {
+				row: { id, notice: `Saved. ${result.items} ${result.items === 1 ? 'title' : 'titles'} in this collection.` }
+			};
+		} catch (err) {
+			return fail(400, { row: { id, error: message(err) } });
+		}
 	},
 	saveStreaming: async ({ request }) => {
 		const known = STREAMING_SERVICES.map((service) => service.id) as string[];

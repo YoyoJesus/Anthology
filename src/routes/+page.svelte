@@ -5,6 +5,8 @@
 
 	let { data }: PageProps = $props();
 
+	const serviceNames = $derived(new Map(data.streamingServices.map((service) => [service.id as string, service.name])));
+
 	const kinds = [
 		{ value: '', label: 'All' },
 		{ value: 'movie', label: 'Movies' },
@@ -44,19 +46,35 @@
 				</a>
 			{/each}
 		</nav>
-		{#if data.sources.length > 1}
-			<form method="get" action="/">
+		{#if data.sources.length > 1 || data.streamingServices.length}
+			<form method="get" action="/" class="flex flex-wrap gap-3">
 				{#if data.filters.q}<input type="hidden" name="q" value={data.filters.q} />{/if}
 				{#if data.filters.kind}<input type="hidden" name="kind" value={data.filters.kind} />{/if}
-				<label>
-					<span class="sr-only">Source</span>
-					<select name="source" onchange={(e) => e.currentTarget.form?.requestSubmit()}>
-						<option value="" selected={data.filters.source === ''}>All sources</option>
-						{#each data.sources as source (source.id)}
-							<option value={source.id} selected={data.filters.source === source.id}>{source.name}</option>
-						{/each}
-					</select>
-				</label>
+				{#if data.sources.length > 1}
+					<label>
+						<span class="sr-only">Source</span>
+						<select name="source" onchange={(e) => e.currentTarget.form?.requestSubmit()}>
+							<option value="" selected={data.filters.source === ''}>All sources</option>
+							{#each data.sources as source (source.id)}
+								<option value={source.id} selected={data.filters.source === source.id}>{source.name}</option>
+							{/each}
+						</select>
+					</label>
+				{:else if data.filters.source}
+					<input type="hidden" name="source" value={data.filters.source} />
+				{/if}
+				{#if data.streamingServices.length}
+					<label>
+						<span class="sr-only">Streaming</span>
+						<select name="streaming" onchange={(e) => e.currentTarget.form?.requestSubmit()}>
+							<option value="" selected={data.filters.streaming === ''}>Any availability</option>
+							<option value="any" selected={data.filters.streaming === 'any'}>On my services</option>
+							{#each data.streamingServices as service (service.id)}
+								<option value={service.id} selected={data.filters.streaming === service.id}>On {service.name}</option>
+							{/each}
+						</select>
+					</label>
+				{/if}
 				<noscript><button class="btn">Apply</button></noscript>
 			</form>
 		{/if}
@@ -76,6 +94,11 @@
 							<SourceTag name={source.sourceName} type={source.sourceType} />
 						{/each}
 					</div>
+					{#if work.streaming.length}
+						<p class="mt-0.5 truncate text-xs text-faint">
+							{work.streaming.map((id) => serviceNames.get(id) ?? id).join(' · ')}
+						</p>
+					{/if}
 				</a>
 			</li>
 		{/each}

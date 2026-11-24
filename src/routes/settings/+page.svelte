@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import Icon from '#lib/components/Icon.svelte';
 	import SourceTag from '#lib/components/SourceTag.svelte';
-	import type { SourceType } from '#lib/types.ts';
+	import { STREAMING_SERVICES, type SourceType } from '#lib/types.ts';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -46,6 +46,7 @@
 
 	const addResult = $derived(form && 'add' in form ? form.add : undefined);
 	const rowResult = $derived(form && 'row' in form ? form.row : undefined);
+	const streamingResult = $derived(form && 'streaming' in form ? form.streaming : undefined);
 </script>
 
 <svelte:head><title>Settings · Anthology</title></svelte:head>
@@ -198,4 +199,65 @@
 			</button>
 		</div>
 	</form>
+</section>
+
+<section class="mt-12 max-w-xl" aria-labelledby="streaming-heading">
+	<h2 id="streaming-heading" class="text-lg font-medium">Streaming services</h2>
+	<p class="mt-1 text-sm text-muted">
+		Tick the services you subscribe to. Titles in your library that one of them streams in region {data.streaming
+			.region}
+		are marked, and you can filter by them.
+	</p>
+
+	<form method="post" action="?/saveStreaming" class="mt-4" use:enhance={track('streaming')}>
+		<fieldset class="grid gap-2 sm:grid-cols-2">
+			<legend class="sr-only">Services</legend>
+			{#each STREAMING_SERVICES as service (service.id)}
+				<label class="flex items-center gap-2 text-sm">
+					<input
+						type="checkbox"
+						name="service"
+						value={service.id}
+						checked={data.streaming.enabled.includes(service.id)}
+						class="size-4 accent-accent"
+					/>
+					{service.name}
+				</label>
+			{/each}
+		</fieldset>
+
+		{#if streamingResult && 'error' in streamingResult}
+			<p class="mt-3 flex items-center gap-1.5 text-sm text-danger" role="alert">
+				<Icon name="circle-alert" />{streamingResult.error}
+			</p>
+		{:else if streamingResult && 'notice' in streamingResult}
+			<p class="mt-3 flex items-center gap-1.5 text-sm text-ok"><Icon name="circle-check" />{streamingResult.notice}</p>
+		{/if}
+
+		<div class="mt-4 flex flex-wrap items-center gap-2">
+			<button class="btn btn-primary" disabled={busy !== null}>Save services</button>
+			{#if data.streaming.configured}
+				<button class="btn" formaction="?/refreshStreaming" disabled={busy !== null || data.streaming.refreshing}>
+					<Icon
+						name="refresh-cw"
+						class="size-4 {busy === 'streaming' ? 'animate-spin motion-reduce:animate-none' : ''}"
+					/>
+					Check availability
+				</button>
+			{/if}
+		</div>
+	</form>
+
+	<p class="mt-4 text-sm text-muted">
+		{#if data.streaming.configured}
+			{data.streaming.checked}
+			{data.streaming.checked === 1 ? 'title' : 'titles'} checked. Availability refreshes after each sync and is rechecked
+			weekly. Only titles with a TMDB ID can be looked up.
+		{:else}
+			Set <code>TMDB_READ_TOKEN</code> to a TMDB API read access token to turn on lookups.
+		{/if}
+	</p>
+	<p class="mt-2 text-xs text-faint">
+		Streaming data from JustWatch via TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.
+	</p>
 </section>

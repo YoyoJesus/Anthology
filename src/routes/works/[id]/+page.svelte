@@ -2,6 +2,7 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import Poster from '#lib/components/Poster.svelte';
 	import SourceTag from '#lib/components/SourceTag.svelte';
+	import { STREAMING_SERVICES } from '#lib/types.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -54,6 +55,24 @@
 				</li>
 			{/each}
 		</ul>
+
+		{#if work.streaming.length}
+			<h2 class="label mt-8">Streaming on</h2>
+			<p class="mt-2">
+				{work.streaming.map((id) => STREAMING_SERVICES.find((s) => s.id === id)?.name ?? id).join(', ')}
+			</p>
+			{#if data.watchLink}
+				<a
+					href={data.watchLink}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="mt-1 inline-flex items-center gap-1 text-sm text-accent hover:underline"
+				>
+					Where to watch <Icon name="external-link" />
+				</a>
+			{/if}
+			<p class="mt-1 text-xs text-faint">Streaming data from JustWatch via TMDB.</p>
+		{/if}
 
 		{#if ids.length}
 			<h2 class="label mt-8">External IDs</h2>

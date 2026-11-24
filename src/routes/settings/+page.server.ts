@@ -2,10 +2,12 @@ import { fail } from '@sveltejs/kit';
 import { createAdapter, supportedSourceTypes } from '#lib/server/adapters/index.ts';
 import { config } from '#lib/server/config.ts';
 import { getDb } from '#lib/server/db.ts';
-import { isSyncing, runSync } from '#lib/server/jobs.ts';
+import { isRefreshingAvailability, isSyncing, runAvailabilityRefresh, runSync } from '#lib/server/jobs.ts';
 import { PosterCache } from '#lib/server/posters.ts';
 import { createSource, deleteSource, getSourceConfig, listSources, setSourceEnabled } from '#lib/server/sources.ts';
+import { getEnabledServices, setEnabledServices } from '#lib/server/streaming.ts';
 import { parseSourceForm } from '#lib/server/validation.ts';
+import { STREAMING_SERVICES, type StreamingServiceId } from '#lib/types.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 function types() {
@@ -20,10 +22,25 @@ async function sourceIdFrom(request: Request): Promise<number> {
 	return Number((await request.formData()).get('id'));
 }
 
-export const load: PageServerLoad = () => ({
-	sources: listSources(getDb()).map((source) => ({ ...source, syncing: isSyncing(source.id) })),
-	types: types()
-});
+export const load: PageServerLoad = () => {
+	const db = getDb();
+	const checked = db
+		.prepare('SELECT COUNT(*) AS n FROM availability_checks WHERE region = ?')
+		.get(config.streamingRegion) as {
+		n: number;
+	};
+	return {
+		sources: listSources(db).map((source) => ({ ...source, syncing: isSyncing(source.id) })),
+		types: types(),
+		streaming: {
+			enabled: getEnabledServices(db),
+			region: config.streamingRegion,
+			configured: Boolean(config.tmdbToken),
+			refreshing: isRefreshingAvailability(),
+			checked: checked.n
+		}
+	};
+};
 
 export const actions: Actions = {
 	testNew: async ({ request }) => {
@@ -70,6 +87,24 @@ export const actions: Actions = {
 	toggle: async ({ request }) => {
 		const data = await request.formData();
 		setSourceEnabled(getDb(), Number(data.get('id')), data.get('enabled') === 'true');
+	},
+	saveStreaming: async ({ request }) => {
+		const known = STREAMING_SERVICES.map((service) => service.id) as string[];
+		const chosen = (await request.formData()).getAll('service').map(String);
+		setEnabledServices(
+			getDb(),
+			chosen.filter((id): id is StreamingServiceId => known.includes(id))
+		);
+		return { streaming: { notice: 'Saved.' } };
+	},
+	refreshStreaming: async () => {
+		const result = await runAvailabilityRefresh();
+		if (!result) return fail(400, { streaming: { error: 'Set TMDB_READ_TOKEN to look up streaming availability.' } });
+		if (result.error) return fail(400, { streaming: { error: result.error } });
+		const failed = result.failed ? ` ${result.failed} lookups failed.` : '';
+		return {
+			streaming: { notice: `Checked ${result.checked} ${result.checked === 1 ? 'title' : 'titles'}.${failed}` }
+		};
 	},
 	remove: async ({ request }) => {
 		const db = getDb();

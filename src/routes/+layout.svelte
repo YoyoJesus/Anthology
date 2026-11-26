@@ -8,6 +8,7 @@
 
 	let { children, data }: LayoutProps = $props();
 	const onSettings = $derived(page.url.pathname.startsWith('/settings'));
+	const onScan = $derived(page.url.pathname.startsWith('/scan'));
 	const onLibrary = $derived(page.url.pathname === '/');
 	/** A new search keeps the library filters you already picked. */
 	const KEPT_FILTERS = ['kind', 'genre', 'rating', 'sort', 'source', 'streaming'];
@@ -66,9 +67,9 @@
 
 {#if data.authenticated}
 	<header class="border-b border-line">
-		<div class="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
+		<div class="mx-auto flex max-w-7xl items-center gap-2 px-4 py-3 sm:gap-4 sm:px-6">
 			<a href="/" class="font-serif text-xl tracking-tight">Anthology</a>
-			<form action="/" method="get" class="ml-auto flex w-full max-w-sm items-center sm:ml-6" role="search">
+			<form action="/" method="get" class="ml-auto flex w-full max-w-sm min-w-0 items-center sm:ml-6" role="search">
 				{#each keptFilters as [key, value] (key)}<input type="hidden" name={key} {value} />{/each}
 				<label>
 					<span class="sr-only">Search by</span>
@@ -78,7 +79,7 @@
 						<option value="director">Directors</option>
 					</select>
 				</label>
-				<label class="relative w-full">
+				<label class="relative w-full min-w-0">
 					<span class="sr-only">Search the library</span>
 					<Icon name="search" class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-faint" />
 					<input
@@ -94,7 +95,11 @@
 					/>
 				</label>
 			</form>
-			<nav class="flex items-center gap-1">
+			<nav class="flex items-center sm:gap-1">
+				<a href="/scan" class="btn btn-quiet {onScan ? 'text-ink' : ''}" aria-current={onScan ? 'page' : undefined}>
+					<Icon name="scan-barcode" />
+					<span class="sr-only lg:not-sr-only">Scan</span>
+				</a>
 				<a
 					href="/settings"
 					class="btn btn-quiet {onSettings ? 'text-ink' : ''}"

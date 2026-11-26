@@ -48,12 +48,29 @@ export function parseCollection(text: string): ParsedCollection {
 			skipped.push(index + 1);
 			return;
 		}
-		const key = `${kind}|${normalizeTitle(line)}|${year ?? ''}`;
+		const key = entryKey({ title: line, year, kind });
 		if (seen.has(key)) return;
 		seen.add(key);
 		entries.push({ title: line, year, kind });
 	});
 	return { entries, skipped };
+}
+
+function entryKey(entry: CollectionEntry): string {
+	return `${entry.kind}|${normalizeTitle(entry.title)}|${entry.year ?? ''}`;
+}
+
+export type AddResult = { status: 'added'; body: string } | { status: 'duplicate' | 'invalid' | 'full' };
+
+/** Appends one title to a collection list, unless it is already there or would not read back as the same title. */
+export function addToCollection(body: string, entry: CollectionEntry): AddResult {
+	const line = `${entry.kind === 'show' ? 'TV: ' : ''}${entry.title.trim()}${entry.year ? ` (${entry.year})` : ''}`;
+	const parsed = parseCollection(line).entries;
+	if (parsed.length !== 1 || entryKey(parsed[0]) !== entryKey(entry)) return { status: 'invalid' };
+	if (parseCollection(body).entries.some((e) => entryKey(e) === entryKey(entry))) return { status: 'duplicate' };
+	const trimmed = body.replace(/\s+$/, '');
+	if (trimmed.split('\n').length >= MAX_COLLECTION_LINES) return { status: 'full' };
+	return { status: 'added', body: trimmed ? `${trimmed}\n${line}` : line };
 }
 
 function remoteId(entry: CollectionEntry): string {

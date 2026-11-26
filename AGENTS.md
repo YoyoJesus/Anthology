@@ -6,6 +6,7 @@ Anthology is a self-hosted SvelteKit app that merges the libraries of several me
 
 - `src/lib/server/adapters/`: one file per source type, each implementing `SourceAdapter` from `types.ts`. Register new adapters in `adapters/index.ts`. Core code must not know about specific sources.
 - `src/lib/server/adapters/collection.ts`: the digital collection source. Its title list is stored in `collection_lists`, not in the encrypted credentials, and its items have an empty `link_url`.
+- `src/lib/server/barcode.ts`: disc barcode validation, product name cleanup and the UPCitemdb lookup for the `/scan` page, which appends titles to a collection with `addToCollection`.
 - `src/lib/server/adapters/streaming.ts`: a service's subscription catalogue from TMDB discover. Streaming sources are created and removed by `syncStreamingSources` to match the services ticked in Settings, not added by hand.
 - `src/lib/server/sync.ts`: full sync of one source. `WorkIndex` loads works once and matches in memory (override, external IDs, title + year, then a unique title when a year is missing). All writes go out through `writeBatch`, because a query per item is too slow against a remote database.
 - `src/lib/server/matcher.ts`: pure title normalization and ID helpers.

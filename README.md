@@ -9,7 +9,7 @@ A catalogue that pulls the libraries of your media servers into one searchable c
 **Sources**
 
 - Plex and Jellyfin servers (movies and TV shows), added and tested from Settings
-- Digital collections: paste a list of titles you own, such as Apple TV purchases or DVDs
+- Digital collections: paste a list of titles you own, such as Apple TV purchases or DVDs, or scan disc barcodes with your phone
 - Streaming catalogues for over 30 services, from Netflix, Prime Video, Disney+, Hulu, Apple TV+, HBO Max, Paramount+ and Peacock to free services such as Tubi and Pluto TV, live TV services, and regional ones such as BBC iPlayer, Crave and Stan: everything each service you tick includes in your region
 - A sample-data source for trying the app without a server (dev only, unless `ENABLE_MOCK_SOURCES=true`)
 
@@ -105,6 +105,17 @@ TV: Low Tide Club (2018)
 - Lines starting with `#` are ignored. Use **Edit list** on the source to change the list later.
 
 A title without a year joins an existing title only when exactly one matches. Titles TMDB cannot match still appear in the library, without a poster or rating.
+
+### Scanning discs
+
+Open **Scan** in the header on your phone, tap **Start camera** and point it at the barcode on a DVD or Blu-ray. Anthology looks the barcode up, shows the matching titles, and **Add** puts the one you pick into a digital collection. If you have no collection yet, the page offers to create one.
+
+<img src="docs/screenshots/scan-phone.png" alt="Scan page on a phone" width="320">
+
+- The camera needs Chrome on Android and an `https://` address. Elsewhere, type the barcode or search by title on the same page.
+- Barcodes are looked up on [UPCitemdb](https://www.upcitemdb.com/). Only the barcode digits are sent. Its free tier allows 100 lookups a day and about one every 10 seconds, so wait a moment between discs.
+- Matches come from TMDB when `TMDB_READ_TOKEN` is set. Without it, the title read from the barcode is offered as is.
+- A title already in the collection is not added twice. The disc format (DVD, Blu-ray, 4K) is shown but not stored.
 
 ### Streaming services
 

@@ -18,7 +18,10 @@ const NAMES = [
 	'arrow-left',
 	'power',
 	'library',
-	'star'
+	'star',
+	'scan-barcode',
+	'camera',
+	'camera-off'
 ];
 
 const width = icons.width ?? 24;

@@ -65,7 +65,7 @@ export const actions: Actions = {
 		const entry = parseCollection(query).entries[0];
 		if (!entry) return fail(400, { lookup: { error: 'Enter a title to search for.', query } });
 		try {
-			const candidates = await candidatesFor(entry.title, entry.year, undefined);
+			const candidates = await candidatesFor(entry.title, entry.year, entry.kind === 'show' ? 'show' : undefined);
 			if (!candidates.length) return fail(404, { lookup: { error: `Nothing on TMDB matches "${query}".`, query } });
 			return { lookup: { query, candidates, barcode: null, product: null, format: null as DiscFormat | null } };
 		} catch (err) {

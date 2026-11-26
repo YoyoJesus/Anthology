@@ -123,3 +123,56 @@ export async function fetchTitleInfo(
 		directors: [...new Set(directors)]
 	};
 }
+
+export interface TitleCandidate {
+	tmdbId: string;
+	kind: 'movie' | 'show';
+	title: string;
+	year: number | null;
+	/** TMDB image path, served through /posters/tmdb. */
+	poster: string | null;
+}
+
+interface MultiResult {
+	id: number;
+	media_type?: string;
+	title?: string;
+	name?: string;
+	release_date?: string;
+	first_air_date?: string;
+	poster_path?: string | null;
+	popularity?: number;
+}
+
+const CANDIDATES = 6;
+
+/** Movies and shows matching a title, closest year and the expected kind first, then TMDB's own order. */
+export async function searchTitles(
+	query: string,
+	options: { year?: number | null; kind?: 'movie' | 'show' },
+	token: string,
+	fetchFn: typeof fetch = globalThis.fetch
+): Promise<TitleCandidate[]> {
+	const body = await tmdbGet<{ results?: MultiResult[] }>(
+		'/search/multi',
+		{ query, include_adult: 'false' },
+		token,
+		fetchFn
+	);
+	const candidates = (body.results ?? []).flatMap((r): TitleCandidate[] => {
+		if (r.media_type !== 'movie' && r.media_type !== 'tv') return [];
+		const title = (r.media_type === 'movie' ? r.title : r.name)?.trim();
+		if (!title) return [];
+		const year = Number((r.release_date ?? r.first_air_date ?? '').slice(0, 4)) || null;
+		const poster = r.poster_path && TMDB_POSTER_PATH.test(r.poster_path) ? r.poster_path : null;
+		return [{ tmdbId: String(r.id), kind: r.media_type === 'movie' ? 'movie' : 'show', title, year, poster }];
+	});
+	const score = (c: TitleCandidate) =>
+		(options.year && c.year ? Math.min(Math.abs(c.year - options.year), 5) : 5) +
+		(options.kind && c.kind !== options.kind ? 3 : 0);
+	return candidates
+		.map((c, i) => ({ c, i }))
+		.sort((a, b) => score(a.c) - score(b.c) || a.i - b.i)
+		.slice(0, CANDIDATES)
+		.map(({ c }) => c);
+}

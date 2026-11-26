@@ -8,6 +8,7 @@
 
 	let { children, data }: LayoutProps = $props();
 	const onSettings = $derived(page.url.pathname.startsWith('/settings'));
+	const onScan = $derived(page.url.pathname.startsWith('/scan'));
 	const onLibrary = $derived(page.url.pathname === '/');
 	/** A new search keeps the library filters you already picked. */
 	const KEPT_FILTERS = ['kind', 'genre', 'rating', 'sort', 'source', 'streaming'];
@@ -95,6 +96,10 @@
 				</label>
 			</form>
 			<nav class="flex items-center gap-1">
+				<a href="/scan" class="btn btn-quiet {onScan ? 'text-ink' : ''}" aria-current={onScan ? 'page' : undefined}>
+					<Icon name="scan-barcode" />
+					<span class="sr-only lg:not-sr-only">Scan</span>
+				</a>
 				<a
 					href="/settings"
 					class="btn btn-quiet {onSettings ? 'text-ink' : ''}"
